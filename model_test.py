@@ -11,7 +11,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from transformers import pipeline
-from utils.model_loader import load_llama_8b
+from utils.local_model_loader import load_llama_8b
 
 # Load the model and tokenizer
 model, tokenizer = load_llama_8b()
