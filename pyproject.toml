@@ -18,6 +18,8 @@ dependencies = [
     "torch>=2.0.0",
     "transformers>=4.20.0",
     "huggingface-hub>=0.15.0",
+    "accelerate>=0.20.0",  # For BitsAndBytesConfig and model loading
+    "bitsandbytes>=0.39.0",  # For 8-bit quantization
     
     # Audio processing
     "librosa>=0.10.0",
@@ -25,7 +27,7 @@ dependencies = [
     "pydub>=0.25.0",
     "scipy>=1.9.0",
     
-    # AI models
+    # AI models for audio
     "openai-whisper>=20230314",
     "speechbrain>=0.5.0",
     "demucs>=4.0.0",
@@ -33,12 +35,10 @@ dependencies = [
     # Speaker diarization
     "pyannote.audio>=3.0.0",
     
-    # Utilities
+    # Core utilities
     "numpy>=1.21.0",
     "tqdm>=4.64.0",
     "python-dotenv>=0.19.0",
-    "pyyaml>=6.0",
-    "click>=8.0.0",
 ]
 
 [project.optional-dependencies]
