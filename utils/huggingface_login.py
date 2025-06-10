@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-def [REMOVED]():
+def hf_login():
     token = os.getenv("HUGGINGFACE_TOKEN")
     if not token:
         raise ValueError("HUGGINGFACE_TOKEN environment variable not set")
