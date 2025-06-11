@@ -109,7 +109,11 @@ class PipelineState:
     
     def get_overall_status(self, total_stages: int) -> JobStatus:
         """Determine overall job status."""
-        if self.current_stage >= total_stages:
+        # Handle None values
+        current_stage = self.current_stage or 0
+        total_stages = total_stages or 1
+        
+        if current_stage >= total_stages:
             return JobStatus.COMPLETED
         elif any(m.status == StageStatus.FAILED for m in self.stage_metrics):
             return JobStatus.FAILED
