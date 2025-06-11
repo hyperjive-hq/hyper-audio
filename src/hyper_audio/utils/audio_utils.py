@@ -161,6 +161,26 @@ def ensure_mono(audio: np.ndarray) -> np.ndarray:
         raise ValueError(f"Unsupported audio shape: {audio.shape}")
 
 
+def normalize_audio(audio: np.ndarray, norm: float = 1.0) -> np.ndarray:
+    """Normalize audio to specified peak amplitude.
+    
+    Args:
+        audio: Audio data
+        norm: Target peak amplitude (default 1.0)
+        
+    Returns:
+        Normalized audio data
+    """
+    if audio.size == 0:
+        return audio
+    
+    max_val = np.max(np.abs(audio))
+    if max_val > 0:
+        return audio / max_val * norm
+    else:
+        return audio
+
+
 def apply_fade(
     audio: np.ndarray,
     fade_in_samples: int = 0,
