@@ -7,46 +7,80 @@ name = "hyper-audio"
 version = "0.1.0"
 description = "AI-powered audio processing pipeline for podcast voice replacement"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.8,<3.14"
 license = "MIT"
 authors = [
     {name = "James", email = "james@example.com"},
 ]
 
 dependencies = [
-    # Core ML frameworks
-    "torch>=2.0.0",
-    "transformers>=4.20.0",
-    "huggingface-hub>=0.15.0",
-    "accelerate>=0.20.0",  # For BitsAndBytesConfig and model loading
-    "bitsandbytes>=0.39.0",  # For 8-bit quantization
+    # Core utilities - minimal working set
+    "numpy>=1.21.0,<2.0.0",
+    "tqdm>=4.64.0", 
+    "python-dotenv>=0.19.0",
     
-    # Audio processing
+    # Basic audio processing
     "librosa>=0.10.0",
     "soundfile>=0.12.0",
     "pydub>=0.25.0",
     "scipy>=1.9.0",
-    
-    # AI models for audio
-    "openai-whisper>=20230314",
-    "speechbrain>=0.5.0",
-    "demucs>=4.0.0",
-    
-    # Speaker diarization
-    "pyannote.audio>=3.0.0",
-    
-    # Core utilities
-    "numpy>=1.21.0",
-    "tqdm>=4.64.0",
-    "python-dotenv>=0.19.0",
 ]
 
 [project.optional-dependencies]
+# Core ML frameworks
+ml = [
+    "torch>=2.0.0",
+    "transformers>=4.20.0", 
+    "huggingface-hub>=0.15.0",
+    "accelerate>=0.20.0",
+]
+
+# Audio AI models (may have compatibility issues)
+audio-ai = [
+    "speechbrain>=0.5.0",
+    "demucs>=4.0.0",
+    "pyannote.audio>=3.0.0",
+]
+
+# Whisper (problematic on Python 3.13)
+whisper = [
+    "openai-whisper>=20240930; python_version<'3.13'",
+]
+
+# Quantization support
+quantization = [
+    "bitsandbytes>=0.39.0; python_version<'3.13'",
+]
+
+# Development tools
 dev = [
     "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0", 
     "black>=22.0.0",
     "isort>=5.10.0",
     "flake8>=4.0.0",
+    "mypy>=1.0.0",
+]
+
+# Testing only
+test = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0", 
+    "pytest-cov>=4.0.0",
+]
+
+# All dependencies for full functionality
+all = [
+    "torch>=2.0.0",
+    "transformers>=4.20.0",
+    "huggingface-hub>=0.15.0", 
+    "accelerate>=0.20.0",
+    "speechbrain>=0.5.0",
+    "demucs>=4.0.0",
+    "pyannote.audio>=3.0.0",
+    "openai-whisper>=20240930; python_version<'3.13'",
+    "bitsandbytes>=0.39.0; python_version<'3.13'",
 ]
 
 [tool.setuptools.packages.find]
@@ -58,3 +92,77 @@ where = ["src"]
 [tool.black]
 line-length = 88
 target-version = ['py38']
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+
+[tool.pytest.ini_options]
+# Test discovery
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+
+# Markers
+markers = [
+    "integration: Integration tests (may be slower)",
+    "slow: Slow running tests",
+    "gpu: Tests requiring GPU/CUDA",
+    "unit: Fast unit tests (default)",
+]
+
+# Output options
+addopts = [
+    "--verbose",
+    "--tb=short", 
+    "--strict-markers",
+    "--color=yes",
+    "--cov=src/hyper_audio",
+    "--cov-report=html",
+    "--cov-report=term-missing",
+    "--cov-report=xml",
+]
+
+# Minimum Python version
+minversion = "3.8"
+
+# Test discovery patterns
+norecursedirs = [
+    ".git",
+    ".tox", 
+    "dist",
+    "build",
+    "*.egg",
+    "__pycache__",
+    ".pytest_cache",
+]
+
+# Async test configuration
+asyncio_mode = "auto"
+
+# Filter warnings
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning", 
+    "ignore::FutureWarning",
+]
+
+[tool.coverage.run]
+source = ["src/hyper_audio"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "@abstract",
+]
