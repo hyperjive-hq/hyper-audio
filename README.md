@@ -243,6 +243,261 @@ This project aims to create a complete AI-powered audio processing pipeline that
 - Optimal model quantization strategies for RTX 4090?
 - Edge case handling for complex audio scenarios?
 
+## 🛠️ Development Tools
+
+### Pipeline Stage Development Playground
+
+For developing and testing individual pipeline stages, use the included development playground:
+
+```bash
+# Make the playground executable
+chmod +x dev_playground.py
+
+# List available stages and their descriptions
+python dev_playground.py list
+
+# List available sample data
+python dev_playground.py list --stage any
+
+# Run a specific stage with profiling
+python dev_playground.py run --stage preprocessor --input data/sample.mp3
+
+# Run a stage with cached intermediate results
+python dev_playground.py run --stage diarizer --input preprocessor_1234567890
+
+# Profile a stage's performance
+python dev_playground.py profile --stage separator --input preprocessor_result.pkl
+
+# Inspect cached results or data files
+python dev_playground.py inspect --input diarizer_output.pkl
+```
+
+#### Playground Features
+
+- **Individual Stage Testing**: Run any pipeline stage independently
+- **Automatic Input Discovery**: Finds appropriate sample data or cached results
+- **Performance Profiling**: Memory usage, execution time, and result analysis
+- **Result Caching**: Save intermediate results for rapid iteration
+- **Hot Reloading**: Test code changes without full pipeline runs
+
+#### Development Workflow
+
+1. **Prepare Sample Data**: Place audio files in `data/` directory
+2. **Run Early Stages**: Generate intermediate results for later stages
+   ```bash
+   python dev_playground.py run --stage preprocessor --input data/podcast.wav
+   python dev_playground.py run --stage separator --input preprocessor_1234567890
+   ```
+3. **Iterate on Target Stage**: Modify stage code and test quickly
+   ```bash
+   python dev_playground.py run --stage diarizer --input separator_1234567890
+   ```
+4. **Profile Performance**: Optimize memory and speed
+   ```bash
+   python dev_playground.py profile --stage diarizer
+   ```
+
+#### Cached Results
+
+The playground stores intermediate results in `dev_cache/` with automatic naming:
+- `preprocessor_<timestamp>.pkl` - Normalized audio data
+- `separator_<timestamp>.pkl` - Separated audio components  
+- `diarizer_<timestamp>.pkl` - Speaker segments
+- `recognizer_<timestamp>.pkl` - Transcription with timing
+- `synthesizer_<timestamp>.pkl` - Generated speech
+- `reconstructor_<timestamp>.pkl` - Final mixed audio
+
+This allows rapid iteration on individual stages without re-running the entire pipeline.
+
+### Pipeline Stage Reference
+
+Each stage has specific input/output requirements. Here are detailed examples for each:
+
+#### 1. AudioPreprocessor Stage
+**Purpose**: Load, normalize, and prepare raw audio files for processing
+
+```bash
+# Input: Raw audio file (MP3, WAV, FLAC, etc.)
+python dev_playground.py run --stage preprocessor --input data/podcast.wav
+
+# Expected Input: File path (string)
+# Expected Output: Tuple of (normalized_audio: np.ndarray, sample_rate: int)
+```
+
+**Input**: Audio file path (`.wav`, `.mp3`, `.flac`, `.m4a`)
+**Output**: `(audio_data, sample_rate)` where:
+- `audio_data`: Normalized numpy array of shape `(samples,)` or `(channels, samples)`
+- `sample_rate`: Integer sample rate (typically 16000 or 44100 Hz)
+
+#### 2. VoiceSeparator Stage  
+**Purpose**: Separate vocals from background music using AI models
+
+```bash
+# Input: Preprocessed audio data
+python dev_playground.py run --stage separator --input preprocessor_1234567890
+
+# Expected Input: (audio_data: np.ndarray, sample_rate: int)
+# Expected Output: Dict with 'vocals' and 'music' audio arrays
+```
+
+**Input**: `(audio_data, sample_rate)` from preprocessor
+**Output**: Dictionary with keys:
+- `"vocals"`: Separated vocal audio as numpy array
+- `"music"`: Separated background music as numpy array
+
+#### 3. SpeakerDiarizer Stage
+**Purpose**: Identify different speakers and their timing segments
+
+```bash
+# Input: Separated vocal audio
+python dev_playground.py run --stage diarizer --input separator_1234567890
+
+# Expected Input: (vocals_audio: np.ndarray, sample_rate: int)  
+# Expected Output: List of speaker segments with timing
+```
+
+**Input**: `(vocals_audio, sample_rate)` from separator
+**Output**: List of speaker segments:
+```python
+[
+    {
+        "speaker": "Speaker_A",
+        "start": 0.0,        # Start time in seconds
+        "end": 5.2,          # End time in seconds  
+        "confidence": 0.95   # Confidence score
+    },
+    # ... more segments
+]
+```
+
+#### 4. SpeechRecognizer Stage
+**Purpose**: Transcribe speech with speaker attribution and precise timing
+
+```bash
+# Input: Vocal audio + speaker segments
+python dev_playground.py run --stage recognizer --input diarizer_1234567890
+
+# For manual input, you need both vocals and segments:
+# The playground will automatically load the right data combination
+```
+
+**Input**: `(vocals_audio, sample_rate, speaker_segments)`
+**Output**: Transcription dictionary:
+```python
+{
+    "full_text": "Complete transcription...",
+    "segments": [
+        {
+            "speaker": "Speaker_A",
+            "text": "Hello, how are you?",
+            "start": 0.0,
+            "end": 2.5,
+            "confidence": 0.92
+        },
+        # ... more segments
+    ]
+}
+```
+
+#### 5. VoiceSynthesizer Stage
+**Purpose**: Generate replacement voice for target speaker
+
+```bash
+# Input: Transcription data
+python dev_playground.py run --stage synthesizer --input recognizer_1234567890
+
+# With custom target speaker and voice
+python dev_playground.py run --stage synthesizer --input recognizer_1234567890 \
+    --target-speaker "Speaker_A" --replacement-voice "path/to/voice.wav"
+```
+
+**Input**: `transcription` dict from recognizer + optional parameters
+**Output**: Dictionary mapping speakers to audio:
+```python
+{
+    "Speaker_A": np.ndarray,  # Synthesized audio for replaced speaker
+    "timing_info": [          # Timing alignment data
+        {"start": 0.0, "end": 2.5, "audio_start": 0, "audio_end": 40000},
+        # ... more timing info
+    ]
+}
+```
+
+#### 6. AudioReconstructor Stage
+**Purpose**: Combine synthesized voice with original music to create final output
+
+```bash
+# Input: All previous stage outputs combined
+python dev_playground.py run --stage reconstructor --input synthesizer_1234567890
+
+# The reconstructor automatically loads required data from previous stages
+```
+
+**Input**: Multiple components:
+- `separated_audio`: From separator stage
+- `synthesized_audio`: From synthesizer stage  
+- `transcription`: From recognizer stage
+- `sample_rate`: Audio sample rate
+
+**Output**: Final reconstructed audio as numpy array ready for export
+
+### Common Development Patterns
+
+#### Testing Stage Chain
+```bash
+# Run stages in sequence, each using output from previous
+python dev_playground.py run --stage preprocessor --input data/test.wav
+python dev_playground.py run --stage separator --input preprocessor_1234567890
+python dev_playground.py run --stage diarizer --input separator_1234567890
+python dev_playground.py run --stage recognizer  # Auto-finds diarizer output
+python dev_playground.py run --stage synthesizer # Auto-finds recognizer output  
+python dev_playground.py run --stage reconstructor # Auto-finds all inputs
+```
+
+#### Performance Optimization
+```bash
+# Profile each stage to identify bottlenecks
+python dev_playground.py profile --stage preprocessor
+python dev_playground.py profile --stage separator --input preprocessor_result
+python dev_playground.py profile --stage diarizer --input separator_result
+```
+
+#### Result Inspection
+```bash
+# Examine intermediate results
+python dev_playground.py inspect --input preprocessor_1234567890
+python dev_playground.py inspect --input diarizer_output.pkl
+python dev_playground.py inspect --input transcription.pkl
+```
+
+#### Debugging Failed Stages
+```bash
+# Run with verbose logging and profiling
+python dev_playground.py run --stage diarizer --input vocals.pkl --profile
+
+# Inspect inputs to understand format issues
+python dev_playground.py inspect --input vocals.pkl
+```
+
+### Sample Data Management
+
+Place sample files in the `data/` directory:
+```
+data/
+├── podcast_sample.wav      # Short podcast clip
+├── speech_sample.mp3       # Single speaker sample  
+├── conversation.wav        # Multi-speaker sample
+└── reference_voice.wav     # Voice for synthesis
+```
+
+The playground automatically:
+- Discovers appropriate sample data for each stage
+- Caches intermediate results with timestamps
+- Manages dependencies between stages
+- Provides detailed profiling and inspection tools
+
+This development environment allows you to refine each stage independently before integration into the full pipeline.
+
 ## 🤝 Contributing
 
 This is an experimental project exploring the boundaries of local AI audio processing. Areas particularly needing research and development are marked with 🔍 and 🏗️ above.
