@@ -250,8 +250,8 @@ class PipelineAnalytics:
             for metric in job.get("stage_metrics", []):
                 if metric.get("status") == "completed":
                     # Duration analysis
-                    duration = metric.get("duration_seconds", 0)
-                    if duration > 0:
+                    duration = metric.get("duration_seconds", 0) or 0
+                    if duration and duration > 0:
                         job_duration += duration
                         
                         stage_name = metric.get("stage_name")
@@ -261,13 +261,13 @@ class PipelineAnalytics:
                             stage_durations[stage_name].append(duration)
                     
                     # Memory analysis
-                    memory = metric.get("memory_peak_gb", 0)
-                    if memory > 0:
+                    memory = metric.get("memory_peak_gb", 0) or 0
+                    if memory and memory > 0:
                         job_memory = max(job_memory, memory)
             
-            if job_duration > 0:
+            if job_duration and job_duration > 0:
                 all_durations.append(job_duration)
-            if job_memory > 0:
+            if job_memory and job_memory > 0:
                 all_memory_usage.append(job_memory)
         
         # Calculate averages for each stage
@@ -316,18 +316,19 @@ class PipelineAnalytics:
             # Check for slow jobs
             for job in completed_jobs:
                 total_duration = sum(
-                    metric.get("duration_seconds", 0) 
+                    (metric.get("duration_seconds", 0) or 0)
                     for metric in job.get("stage_metrics", [])
                     if metric.get("status") == "completed"
                 )
-                if total_duration > 1800:  # More than 30 minutes
+                if total_duration and total_duration > 1800:  # More than 30 minutes
                     recommendations.append("Consider performance optimization - some jobs are taking over 30 minutes.")
                     break
         
         # Memory recommendations
         for job in completed_jobs:
             for metric in job.get("stage_metrics", []):
-                if metric.get("memory_peak_gb", 0) > 20:  # More than 20GB
+                memory_usage = metric.get("memory_peak_gb", 0) or 0
+                if memory_usage and memory_usage > 20:  # More than 20GB
                     recommendations.append("High memory usage detected. Consider memory optimization strategies.")
                     break
             else:

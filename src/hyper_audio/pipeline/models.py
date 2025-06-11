@@ -109,9 +109,13 @@ class PipelineState:
     
     def get_overall_status(self, total_stages: int) -> JobStatus:
         """Determine overall job status."""
-        if self.current_stage >= total_stages:
+        # Handle None values
+        current_stage = self.current_stage or 0
+        total_stages = total_stages or 1
+        
+        if current_stage >= total_stages:
             return JobStatus.COMPLETED
-        elif any(m.status == StageStatus.FAILED for m in self.stage_metrics):
+        elif any(m.status == StageStatus.FAILED for m in (self.stage_metrics or [])):
             return JobStatus.FAILED
         else:
             return JobStatus.IN_PROGRESS
@@ -134,23 +138,28 @@ class JobSummary:
     def from_state(cls, state: PipelineState, total_stages: int) -> 'JobSummary':
         """Create job summary from pipeline state."""
         status = state.get_overall_status(total_stages)
-        progress = (len(state.stages_completed) / total_stages) * 100 if total_stages > 0 else 0
+        
+        # Handle None values safely
+        stages_completed = state.stages_completed or []
+        total_stages = total_stages or 1
+        progress = (len(stages_completed) / total_stages) * 100 if total_stages > 0 else 0
         
         # Get latest error message if any
         error_message = None
-        failed_metrics = [m for m in state.stage_metrics if m.status == StageStatus.FAILED]
+        stage_metrics = state.stage_metrics or []
+        failed_metrics = [m for m in stage_metrics if m.status == StageStatus.FAILED]
         if failed_metrics:
             error_message = failed_metrics[-1].error_message
         
         return cls(
-            job_id=state.job_id,
+            job_id=state.job_id or "unknown",
             status=status,
             progress_percentage=progress,
             created_at=state.created_at,
             updated_at=state.updated_at,
-            current_stage=state.current_stage,
+            current_stage=state.current_stage or 0,
             total_stages=total_stages,
-            stages_completed=state.stages_completed.copy(),
+            stages_completed=stages_completed,
             error_message=error_message
         )
 
