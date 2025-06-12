@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union, Tuple
 import argparse
 import sys
+import numpy as np
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -24,6 +25,7 @@ from hyper_audio.pipeline.stages import (
 from hyper_audio.pipeline.constants import PIPELINE_STAGES
 from hyper_audio.config.settings import settings
 from hyper_audio.utils.logging_utils import get_logger
+from hyper_audio.utils.audio_utils import save_audio
 
 logger = get_logger("dev_playground")
 
@@ -130,13 +132,19 @@ class StagePlayground:
                     audio, sample_rate = input_data
                     result = await stage.process(audio, sample_rate, **kwargs)
                 else:
-                    result = await stage.process(input_data, **kwargs)
+                    raise ValueError(f"Separator stage expects (audio_data, sample_rate) tuple, got {type(input_data)}")
             elif stage_name == "diarizer":
                 if isinstance(input_data, tuple):
                     audio, sample_rate = input_data
                     result = await stage.process(audio, sample_rate, **kwargs)
+                elif isinstance(input_data, dict) and "vocals" in input_data:
+                    # Input from separator stage
+                    vocals = input_data["vocals"]
+                    # Get sample rate from metadata or default
+                    sample_rate = input_data.get("_sample_rate", kwargs.get("sample_rate", 44100))
+                    result = await stage.process(vocals, sample_rate, **kwargs)
                 else:
-                    result = await stage.process(input_data, **kwargs)
+                    raise ValueError(f"Diarizer stage expects (vocals_audio, sample_rate) or separator output dict, got {type(input_data)}")
             elif stage_name == "recognizer":
                 # Expects (audio, sample_rate, speaker_segments)
                 if isinstance(input_data, tuple) and len(input_data) == 3:
@@ -166,7 +174,16 @@ class StagePlayground:
             # Cache result if requested
             if cache_result:
                 cache_key = f"{stage_name}_{int(time.time())}"
-                self.save_result(cache_key, result)
+                # Extract sample rate from result for audio saving
+                sample_rate = None
+                if isinstance(result, tuple) and len(result) == 2:
+                    # Preprocessor result: (audio, sample_rate)
+                    _, sample_rate = result
+                elif isinstance(input_data, tuple) and len(input_data) >= 2:
+                    # Use input sample rate for other stages
+                    sample_rate = input_data[1]
+                
+                self.save_result(cache_key, result, sample_rate)
                 logger.info(f"Result cached as: {cache_key}")
             
             logger.info(f"Stage {stage_name} completed successfully")
@@ -176,59 +193,174 @@ class StagePlayground:
             logger.error(f"Stage {stage_name} failed: {e}")
             raise
     
-    def save_result(self, name: str, data: Any) -> Path:
-        """Save result to cache."""
-        cache_path = self.cache_dir / f"{name}.pkl"
-        with open(cache_path, 'wb') as f:
+    def save_result(self, name: str, data: Any, sample_rate: Optional[int] = None) -> Path:
+        """Save result to cache with directory structure and audio files."""
+        # Create result directory
+        result_dir = self.cache_dir / name
+        result_dir.mkdir(exist_ok=True)
+        
+        # Save pickle data
+        pickle_path = result_dir / "data.pkl"
+        with open(pickle_path, 'wb') as f:
             pickle.dump(data, f)
-        logger.info(f"Saved result to: {cache_path}")
-        return cache_path
+        
+        # Save metadata
+        metadata = {
+            "timestamp": time.time(),
+            "type": str(type(data)),
+            "stage": name.split('_')[0],
+            "sample_rate": sample_rate
+        }
+        
+        metadata_path = result_dir / "metadata.json"
+        with open(metadata_path, 'w') as f:
+            json.dump(metadata, f, indent=2)
+        
+        # Save audio files if applicable
+        self._save_audio_files(result_dir, data, sample_rate)
+        
+        logger.info(f"Saved result to: {result_dir}")
+        return result_dir
+    
+    def _save_audio_files(self, result_dir: Path, data: Any, sample_rate: Optional[int]) -> None:
+        """Save audio data as files for easy inspection."""
+        try:
+            # Handle different data types
+            if isinstance(data, tuple) and len(data) == 2:
+                # Preprocessor output: (audio_data, sample_rate)
+                audio_data, sr = data
+                if isinstance(audio_data, np.ndarray):
+                    save_audio(audio_data, result_dir / "audio.wav", sr)
+                    
+            elif isinstance(data, dict):
+                # Separator output: {"vocals": array, "music": array}
+                # Synthesizer output: {"Speaker_A": array, "timing_info": [...]}
+                for key, value in data.items():
+                    if isinstance(value, np.ndarray) and value.ndim >= 1 and sample_rate is not None:
+                        filename = f"{key}.wav"
+                        save_audio(value, result_dir / filename, sample_rate)
+                        
+            elif isinstance(data, list):
+                # Diarizer/Recognizer output: save as JSON for readability
+                json_path = result_dir / "segments.json"
+                with open(json_path, 'w') as f:
+                    json.dump(data, f, indent=2, default=str)
+                logger.info(f"Saved segments to: {json_path}")
+                    
+            elif isinstance(data, np.ndarray) and sample_rate is not None:
+                # Raw audio array
+                save_audio(data, result_dir / "audio.wav", sample_rate)
+                
+        except Exception as e:
+            logger.warning(f"Could not save audio files: {e}")
     
     def load_data(self, filename: str) -> Any:
         """Load data from file (cache or sample data)."""
-        # Try cache first
+        # Convert to Path and resolve any relative paths
+        input_path = Path(filename).resolve()
+        
+        # If the resolved path exists, use it directly
+        if input_path.exists():
+            return str(input_path)
+        
+        # Try cache directory structure first
+        cache_dir_path = self.cache_dir / filename
+        if cache_dir_path.is_dir():
+            data_file = cache_dir_path / "data.pkl"
+            metadata_file = cache_dir_path / "metadata.json"
+            if data_file.exists():
+                with open(data_file, 'rb') as f:
+                    data = pickle.load(f)
+                
+                # Enhance data with metadata if available
+                if metadata_file.exists():
+                    with open(metadata_file, 'r') as f:
+                        metadata = json.load(f)
+                    
+                    # Add sample rate to data for stages that need it
+                    if isinstance(data, dict) and "sample_rate" in metadata:
+                        data["_sample_rate"] = metadata["sample_rate"]
+                
+                return data
+        
+        # Try old pickle format for backward compatibility
         cache_path = self.cache_dir / filename
-        if cache_path.exists():
+        if cache_path.exists() and cache_path.is_file():
             with open(cache_path, 'rb') as f:
                 return pickle.load(f)
         
-        # Try adding .pkl extension
+        # Try adding .pkl extension for old format
         if not filename.endswith('.pkl'):
             cache_path = self.cache_dir / f"{filename}.pkl"
             if cache_path.exists():
                 with open(cache_path, 'rb') as f:
                     return pickle.load(f)
         
-        # Try data directory
-        data_path = self.data_dir / filename
+        # Try data directory (for sample files)
+        data_path = self.data_dir / Path(filename).name
         if data_path.exists():
             return str(data_path)
         
         raise FileNotFoundError(f"Data file not found: {filename}")
     
     def _get_default_input(self, stage_name: str) -> Any:
-        """Get default input for a stage from sample data."""
-        sample_data = self.list_sample_data()
+        """Get default input for a stage from sample data or latest cache."""
         
         if stage_name == "preprocessor":
-            # Need audio file
+            # Need audio file from data directory
+            sample_data = self.list_sample_data()
             if sample_data['audio']:
-                return str(self.data_dir / sample_data['audio'][0])
+                selected_file = str(self.data_dir / sample_data['audio'][0])
+                logger.info(f"Auto-selected audio file: {selected_file}")
+                return selected_file
             else:
                 raise ValueError("No sample audio files found for preprocessor")
         
-        # For other stages, try to find cached results from previous stages
+        # For other stages, find the most recent output from the previous stage
         stage_order = ["preprocessor", "separator", "diarizer", "recognizer", "synthesizer", "reconstructor"]
         current_idx = stage_order.index(stage_name)
         
-        # Look for cached results from previous stage
         if current_idx > 0:
             prev_stage = stage_order[current_idx - 1]
-            prev_results = [f for f in sample_data['cached_results'] if f.startswith(prev_stage)]
-            if prev_results:
-                return self.load_data(prev_results[0])
+            latest_result = self._find_latest_stage_output(prev_stage)
+            if latest_result:
+                logger.info(f"Auto-selected latest {prev_stage} output: {latest_result}")
+                return self.load_data(latest_result)
         
         raise ValueError(f"No suitable input found for stage: {stage_name}")
+    
+    def _find_latest_stage_output(self, stage_name: str) -> Optional[str]:
+        """Find the most recent output from a specific stage."""
+        # Look for directories in cache that start with stage name
+        stage_dirs = []
+        for item in self.cache_dir.iterdir():
+            if item.is_dir() and item.name.startswith(f"{stage_name}_"):
+                try:
+                    # Extract timestamp from directory name
+                    timestamp_str = item.name.split('_', 1)[1]
+                    timestamp = int(timestamp_str)
+                    stage_dirs.append((timestamp, item.name))
+                except (ValueError, IndexError):
+                    continue
+        
+        # Also look for old pickle files for backward compatibility
+        for item in self.cache_dir.iterdir():
+            if item.is_file() and item.name.startswith(f"{stage_name}_") and item.name.endswith('.pkl'):
+                try:
+                    # Extract timestamp from filename
+                    timestamp_str = item.name.replace(f"{stage_name}_", "").replace(".pkl", "")
+                    timestamp = int(timestamp_str)
+                    stage_dirs.append((timestamp, item.name.replace(".pkl", "")))
+                except (ValueError, IndexError):
+                    continue
+        
+        if stage_dirs:
+            # Sort by timestamp (most recent first) and return the latest
+            stage_dirs.sort(reverse=True)
+            latest = stage_dirs[0][1]
+            return latest
+        
+        return None
     
     def _get_memory_usage(self) -> Dict[str, float]:
         """Get current memory usage."""

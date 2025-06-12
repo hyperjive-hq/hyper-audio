@@ -1,0 +1,156 @@
+## Development Playground Configuration
+## This file defines pipeline runs for testing and development
+
+# Default settings
+defaults:
+  data_dir: "data"
+  cache_dir: "dev_cache"
+  device: "cuda"
+
+# Predefined pipeline configurations
+pipelines:
+  # DMX Voice Separation Pipeline
+  dmx_separation:
+    description: "Process DMX FLAC file with enhanced voice separation"
+    stages:
+      - stage: AudioPreprocessor
+        config:
+          target_sr: 44100
+          normalize: true
+        inputs:
+          file_path: "data/dmx.flac"
+      
+      - stage: EnhancedVoiceSeparator
+        config:
+          model_name: "htdemucs_ft"
+        depends_on: AudioPreprocessor
+
+  # Host Sample Processing Pipeline  
+  host_processing:
+    description: "Full pipeline processing of host sample"
+    stages:
+      - stage: AudioPreprocessor
+        config:
+          target_sr: 44100
+          normalize: true
+        inputs:
+          file_path: "data/host_sample.wav"
+      
+      - stage: VoiceSeparator
+        config:
+          model_name: "htdemucs_ft"
+        depends_on: AudioPreprocessor
+      
+      - stage: SpeakerDiarizer
+        depends_on: VoiceSeparator
+      
+      - stage: SpeechRecognizer
+        config:
+          model_size: "base"
+          language: "en"
+        depends_on: [VoiceSeparator, SpeakerDiarizer]
+
+  # Compare Separation Models
+  separation_comparison:
+    description: "Compare different separation models on the same audio"
+    stages:
+      - stage: AudioPreprocessor
+        config:
+          target_sr: 44100
+          normalize: true
+        inputs:
+          file_path: "data/dmx.flac"
+      
+      - stage: VoiceSeparator
+        config:
+          model_name: "htdemucs_ft"
+        depends_on: AudioPreprocessor
+        
+      - stage: EnhancedVoiceSeparator
+        config:
+          model_name: "htdemucs_ft"
+        depends_on: AudioPreprocessor
+        
+      - stage: SepformerSeparator
+        config:
+          model_name: "speechbrain/sepformer-whamr"
+        depends_on: AudioPreprocessor
+
+  # Quick Test Pipeline
+  quick_test:
+    description: "Quick test with short audio for rapid iteration"
+    stages:
+      - stage: AudioPreprocessor
+        config:
+          target_sr: 44100
+          normalize: true
+        inputs:
+          file_path: "data/test_audio.wav"
+      
+      - stage: VoiceSeparator
+        depends_on: AudioPreprocessor
+
+# Individual stage configurations for standalone testing
+stages:
+  AudioPreprocessor:
+    default_config:
+      target_sr: 44100
+      normalize: true
+    test_inputs:
+      - "data/dmx.flac"
+      - "data/host_sample.wav" 
+      - "data/test_audio.wav"
+
+  VoiceSeparator:
+    default_config:
+      model_name: "htdemucs_ft"
+    model_options:
+      - "htdemucs"
+      - "htdemucs_ft" 
+      - "htdemucs_6s"
+
+  EnhancedVoiceSeparator:
+    default_config:
+      model_name: "htdemucs_ft"
+    model_options:
+      - "htdemucs"
+      - "htdemucs_ft"
+      - "htdemucs_6s"
+
+  SpeakerDiarizer:
+    default_config:
+      min_speakers: 1
+      max_speakers: 10
+
+  SpeechRecognizer:
+    default_config:
+      model_size: "base"
+      language: "en"
+    model_options:
+      - "tiny"
+      - "base" 
+      - "small"
+      - "medium"
+      - "large"
+
+# Testing scenarios
+test_scenarios:
+  dmx_voice_separation:
+    pipeline: dmx_separation
+    expected_outputs:
+      - vocals.wav
+      - music.wav
+    validation:
+      min_duration_seconds: 200
+      max_duration_seconds: 250
+      
+  model_comparison:
+    pipeline: separation_comparison
+    compare_outputs:
+      - VoiceSeparator.vocals
+      - EnhancedVoiceSeparator.vocals
+      - SepformerSeparator.source1
+    metrics:
+      - separation_quality
+      - processing_time
+      - gpu_memory_usage

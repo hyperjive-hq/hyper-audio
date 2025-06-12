@@ -1,0 +1,76 @@
+# Example configuration for multi-stage speech enhancement pipeline
+name: "Multi-Stage Speech Enhancement"
+description: "Combines music separation and speech enhancement for optimal results"
+
+global_config:
+  device: "cuda"
+  cache_dir: "~/.cache/hyper_audio"
+  max_workers: 4
+
+stages:
+  - stage_class: "AudioPreprocessor"
+    stage_id: "preprocessor"
+    enabled: true
+    config:
+      target_sample_rate: 44100
+      normalize: true
+      
+  - stage_class: "VoiceSeparator"
+    stage_id: "music_separator"
+    enabled: true
+    config:
+      model_name: "htdemucs_ft"
+      overlap: 0.75  # High overlap for better quality
+      
+  - stage_class: "SpeechEnhancer"
+    stage_id: "noise_reducer"
+    enabled: true
+    config:
+      model_name: "speechbrain/sepformer-whamr"
+      enhancement_level: "aggressive"
+      
+  - stage_class: "SpeakerDiarizer"
+    stage_id: "diarizer"
+    enabled: true
+    config:
+      model_name: "pyannote/speaker-diarization"
+      min_speakers: 1
+      max_speakers: 10
+      
+  - stage_class: "SpeechRecognizer"
+    stage_id: "transcriber"
+    enabled: true
+    config:
+      model_name: "large-v2"
+      language: "auto"
+
+connections:
+  # Preprocessor -> Music Separator
+  - from_stage: "preprocessor"
+    from_output: "audio_with_sr"
+    to_stage: "music_separator"
+    to_input: "audio_input"
+    
+  # Music Separator -> Speech Enhancer (vocals only)
+  - from_stage: "music_separator"
+    from_output: "vocals"
+    to_stage: "noise_reducer"
+    to_input: "audio_input"
+    
+  # Speech Enhancer -> Diarizer
+  - from_stage: "noise_reducer"
+    from_output: "enhanced_audio"
+    to_stage: "diarizer"
+    to_input: "audio_input"
+    
+  # Diarizer -> Transcriber
+  - from_stage: "diarizer"
+    from_output: "speaker_segments"
+    to_stage: "transcriber"
+    to_input: "speaker_segments"
+    
+  # Enhanced audio -> Transcriber
+  - from_stage: "noise_reducer"
+    from_output: "enhanced_audio"
+    to_stage: "transcriber"
+    to_input: "audio_input"

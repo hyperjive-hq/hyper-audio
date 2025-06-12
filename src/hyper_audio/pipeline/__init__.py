@@ -14,7 +14,7 @@ __all__ = [
     "AudioPipeline",  # backwards compatibility
     "PipelineAnalytics",
     "PipelineResult",
-    "PipelineState", 
+    "PipelineState",
     "StageMetrics",
     "JobSummary",
     "StageStatus",

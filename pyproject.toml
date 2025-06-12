@@ -18,33 +18,32 @@ dependencies = [
     "numpy>=1.21.0,<2.0.0",
     "tqdm>=4.64.0", 
     "python-dotenv>=0.19.0",
+    "psutil>=5.9.0",  # For memory profiling
+    "pyyaml>=6.0",  # For config management
     
-    # Basic audio processing
-    "librosa>=0.10.0",
-    "soundfile>=0.12.0",
-    "pydub>=0.25.0",
-    "scipy>=1.9.0",
+    # Essential audio processing - only what's actually imported
+    "librosa>=0.10.0",  # Used by audio_utils and preprocessor
+    "soundfile>=0.12.0",  # Used by audio_utils
+    
+    # Core ML frameworks - only what's actually imported
+    "torch>=2.0.0",  # Used by separator stages
+    "torchaudio>=2.0.0",  # Used by sepformer_separator
 ]
 
 [project.optional-dependencies]
-# Core ML frameworks
-ml = [
-    "torch>=2.0.0",
+# AI models loaded dynamically by stages
+ai-models = [
+    "demucs>=4.0.0",  # Used by VoiceSeparator and EnhancedVoiceSeparator
+    "speechbrain>=0.5.0",  # Used by SepformerSeparator
+]
+
+# Future additional models
+extended-ai = [
     "transformers>=4.20.0", 
     "huggingface-hub>=0.15.0",
     "accelerate>=0.20.0",
-]
-
-# Audio AI models (may have compatibility issues)
-audio-ai = [
-    "speechbrain>=0.5.0",
-    "demucs>=4.0.0",
     "pyannote.audio>=3.0.0",
-]
-
-# Whisper (problematic on Python 3.13)
-whisper = [
-    "openai-whisper>=20240930; python_version<'3.13'",
+    # "openai-whisper>=20240930",  # Temporarily disabled due to build issues
 ]
 
 # Quantization support
@@ -76,14 +75,6 @@ test = [
 
 # All dependencies for full functionality
 all = [
-    "torch>=2.0.0",
-    "transformers>=4.20.0",
-    "huggingface-hub>=0.15.0", 
-    "accelerate>=0.20.0",
-    "speechbrain>=0.5.0",
-    "demucs>=4.0.0",
-    "pyannote.audio>=3.0.0",
-    "openai-whisper>=20240930; python_version<'3.13'",
     "bitsandbytes>=0.39.0; python_version<'3.13'",
 ]
 
