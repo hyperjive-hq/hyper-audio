@@ -83,9 +83,9 @@ flowchart LR
 
 ## Enhanced Stage Interface System
 
-### Type-Safe Stage Architecture
+### Type-Safe Stage Architecture with Verification
 
-The enhanced pipeline introduces a sophisticated stage interface system with compile-time type safety and automatic compatibility checking:
+The enhanced pipeline introduces a sophisticated stage interface system with compile-time type safety, automatic compatibility checking, and comprehensive output verification:
 
 ```mermaid
 classDiagram
@@ -97,7 +97,11 @@ classDiagram
         +get_metadata() StageMetadata
         +process(inputs) Dict
         +validate_inputs(inputs) bool
+        +verify_outputs(outputs) Tuple[bool, List[str]]
+        +verify_stage_specific(outputs) Tuple[bool, List[str]]
         +can_connect_to(other_stage) Dict
+        +get_required_inputs() List[str]
+        +get_output_names() List[str]
     }
     
     class StageMetadata {
@@ -127,11 +131,15 @@ classDiagram
         <<enumeration>>
         AUDIO_MONO
         AUDIO_STEREO
+        AUDIO_MULTICHANNEL
+        SAMPLE_RATE
         AUDIO_WITH_SR
         SEPARATED_AUDIO
         SPEAKER_SEGMENTS
         TRANSCRIPTION
         SYNTHESIZED_AUDIO
+        FINAL_AUDIO
+        FILE_PATH
     }
     
     EnhancedPipelineStage --> StageMetadata
@@ -195,31 +203,36 @@ classDiagram
   - Sample rate conversion
 
 ### 2. Enhanced Voice Separator
-**Purpose**: Voice/music separation using advanced source separation models
+**Purpose**: Voice/music separation using advanced source separation models with quality verification
 - **Input**: Normalized audio + sample rate (DataType.AUDIO_WITH_SR)
 - **Output**: Multiple separation outputs
   - `vocals`: Separated vocal audio (DataType.AUDIO_MONO)
   - `music`: Separated music/instrumental audio (DataType.AUDIO_MONO)
   - `separated_audio`: Dictionary with vocals and music keys (DataType.SEPARATED_AUDIO)
 - **Model**: HTDemucs Fine-tuned (`htdemucs_ft`) - improved quality over standard HTDemucs
-- **Functionality**:
-  - High-quality vocal isolation from background music
-  - Support for both mono and stereo audio
-  - Automatic format conversion and validation
-  - GPU-accelerated processing with CUDA support
+- **Enhanced Functionality**:
+  - High-quality vocal isolation from background music with automated quality assessment
+  - Support for both mono and stereo audio with automatic format conversion
+  - Comprehensive output verification including energy level analysis
+  - Real-time separation quality metrics (spectral centroid, correlation analysis)
+  - GPU-accelerated processing with CUDA support and memory management
+  - Automatic detection of separation artifacts and clipping
+  - Validation of sample rate requirements (44.1kHz enforcement)
 
-### 3. Speech Enhancer (New)
-**Purpose**: Noise reduction and speech quality enhancement
+### 3. Speech Enhancer
+**Purpose**: Noise reduction and speech quality enhancement with configurable processing levels
 - **Input**: Audio with sample rate or separated audio (DataType.AUDIO_WITH_SR)
 - **Output**: 
   - `enhanced_audio`: Noise-reduced audio (DataType.AUDIO_MONO)
   - `noise_estimate`: Estimated noise component (DataType.AUDIO_MONO)
 - **Model**: SpeechBrain SepFormer (`speechbrain/sepformer-whamr`)
-- **Functionality**:
-  - Advanced noise reduction for speech clarity
-  - Handles mixed content (music + noise + speech)
-  - Configurable enhancement levels (moderate, aggressive)
-  - Works as post-processing after music separation
+- **Enhanced Functionality**:
+  - Advanced noise reduction for speech clarity with quality verification
+  - Flexible input handling (direct audio or post-separation processing)
+  - Configurable enhancement levels (moderate, aggressive) with performance tracking
+  - Seamless integration as post-processing after music separation
+  - Automatic input type detection and processing
+  - Stage-specific verification for enhancement quality metrics
 
 ### 4. Speaker Diarizer
 **Purpose**: Speaker identification and segmentation
@@ -412,22 +425,25 @@ graph TB
 ## Key Features
 
 ### Resilience
-- **Checkpointing**: Automatic stage-by-stage data persistence
-- **Resume Capability**: Continue from any failed stage
-- **Retry Logic**: Configurable retry attempts with exponential backoff
-- **Error Recovery**: Detailed failure analysis and reporting
+- **Checkpointing**: Automatic stage-by-stage data persistence with integrity verification
+- **Resume Capability**: Continue from any failed stage with state restoration
+- **Retry Logic**: Configurable retry attempts with exponential backoff and GPU cleanup
+- **Error Recovery**: Detailed failure analysis and reporting with diagnostic messages
+- **Output Verification**: Comprehensive validation of stage outputs with quality metrics
 
 ### Performance
-- **GPU Memory Management**: Automatic cleanup and optimization
+- **GPU Memory Management**: Automatic cleanup and optimization between stages
 - **Lazy Loading**: Checkpoint data loaded only when needed
 - **Resource Monitoring**: Real-time memory and performance tracking
-- **Bottleneck Identification**: Automated performance analysis
+- **Bottleneck Identification**: Automated performance analysis with stage-specific metrics
+- **Quality Assurance**: Real-time audio quality assessment and artifact detection
 
 ### Scalability
-- **Modular Design**: Independent, replaceable stages
-- **Configuration Management**: Flexible pipeline configuration
-- **Job Management**: Multiple concurrent pipeline jobs
-- **Analytics**: Comprehensive performance monitoring
+- **Modular Design**: Independent, replaceable stages with typed interfaces
+- **Configuration Management**: Flexible pipeline configuration with dependency validation
+- **Job Management**: Multiple concurrent pipeline jobs with state isolation
+- **Analytics**: Comprehensive performance monitoring with quality metrics
+- **Type Safety**: Compile-time validation prevents runtime connection errors
 
 ## Configuration System
 
@@ -480,11 +496,13 @@ connections:
 
 ### Key Configuration Features
 
-1. **Dependency Validation**: Automatic checking of stage input/output compatibility
+1. **Dependency Validation**: Automatic checking of stage input/output compatibility with detailed error reporting
 2. **Execution Ordering**: Topological sort for optimal stage execution sequence
-3. **Type Safety**: Compile-time validation of data type connections
-4. **Flexible Branching**: Support for parallel processing paths
-5. **Dynamic Stage Registry**: Runtime registration of available stages
+3. **Type Safety**: Compile-time validation of data type connections with comprehensive verification
+4. **Flexible Branching**: Support for parallel processing paths and multi-stage workflows
+5. **Dynamic Stage Registry**: Runtime registration of available stages with metadata discovery
+6. **Output Verification**: Automated quality assurance with stage-specific validation rules
+7. **Performance Tracking**: Real-time monitoring of processing quality and resource usage
 
 ## Current Implementation Status
 
@@ -498,10 +516,12 @@ connections:
 - **Development Playground**: Complete development environment for individual stage testing
 
 ### ✅ Enhanced Stage Implementations
-- **Enhanced Voice Separator**: HTDemucs integration with type safety and GPU optimization
-- **Speech Enhancer**: SpeechBrain SepFormer integration for noise reduction
+- **Enhanced Voice Separator**: HTDemucs integration with comprehensive quality verification, spectral analysis, and separation metrics
+- **Speech Enhancer**: SpeechBrain SepFormer integration with configurable enhancement levels and flexible input handling
+- **Audio Preprocessor**: Complete preprocessing with normalization, resampling, and quality validation
 - **Configuration Manager**: Complete system for pipeline configuration and validation
 - **Model Loading Utilities**: Reusable model loading with progress feedback
+- **Stage Interface System**: Type-safe interface with comprehensive output verification and quality metrics
 
 ### ⚠️ Partially Implemented
 - **Stage Integration**: Some stage interfaces defined but full implementations pending
@@ -553,11 +573,12 @@ dev_playground.py                  # Development environment for stage testing
 
 ## Enhanced Usage Examples
 
-### Basic Configuration-Based Usage
+### Basic Configuration-Based Usage with Verification
 
 ```python
 from hyper_audio.pipeline.config_manager import ConfigManager
 from hyper_audio.pipeline import ResilientAudioPipeline
+from hyper_audio.pipeline.stages import AudioPreprocessor, EnhancedVoiceSeparator, SpeechEnhancer
 
 # Initialize configuration manager
 config_manager = ConfigManager()
@@ -576,17 +597,22 @@ if is_valid:
     execution_order = config_manager.get_execution_order(pipeline_config)
     print(f"Execution order: {' → '.join(execution_order)}")
     
-    # Initialize and run pipeline
+    # Initialize and run pipeline with verification
     pipeline = ResilientAudioPipeline(
         config=pipeline_config,
         checkpoint_dir="./checkpoints",
-        max_retries=3
+        max_retries=3,
+        verify_outputs=True  # Enable comprehensive output verification
     )
     
     result = await pipeline.process_audio_with_config(
         input_path="podcast.wav",
         output_path="enhanced_podcast.wav"
     )
+    
+    # Access quality metrics and verification results
+    for stage_id, metrics in result.stage_metrics.items():
+        print(f"Stage {stage_id}: {metrics.verification_status}")
 ```
 
 ### Multi-Stage Speech Enhancement
@@ -623,18 +649,35 @@ pipeline = ResilientAudioPipeline(config=config)
 result = await pipeline.process_audio("input.wav", "output.wav")
 ```
 
-### Stage Compatibility Checking
+### Stage Compatibility Checking with Verification
 
 ```python
 # Verify stage compatibility before configuration
 voice_separator = EnhancedVoiceSeparator("separator")
 speech_enhancer = SpeechEnhancer("enhancer")
 
+# Check compatibility
 connections = voice_separator.can_connect_to(speech_enhancer)
 if connections:
     print("Compatible connections:")
     for output, compatible_inputs in connections.items():
         print(f"  {output} → {compatible_inputs}")
+        
+# Inspect stage metadata
+print(f"Voice Separator outputs: {voice_separator.get_output_names()}")
+print(f"Speech Enhancer inputs: {speech_enhancer.get_required_inputs()}")
+
+# Test output verification
+mock_outputs = {
+    "vocals": np.random.randn(44100),  # 1 second of audio
+    "music": np.random.randn(44100),
+    "separated_audio": {"vocals": np.random.randn(44100), "music": np.random.randn(44100)}
+}
+
+success, messages = await voice_separator.verify_outputs(mock_outputs)
+print(f"Verification: {success}")
+for msg in messages:
+    print(f"  {msg}")
 ```
 
 ### Development and Testing
@@ -658,11 +701,13 @@ playground.inspect_result("separator_12345678.pkl")
 
 ## Key Architectural Benefits
 
-1. **Type Safety**: Compile-time validation prevents incompatible stage connections
-2. **Flexible Configuration**: YAML/JSON-based pipeline definitions support complex workflows
-3. **Dependency Validation**: Automatic detection of missing connections and circular dependencies
-4. **Performance Optimization**: Multi-stage processing allows for specialized model optimization
-5. **Development Efficiency**: Playground environment enables rapid iteration on individual stages
-6. **Production Ready**: Enterprise-grade reliability with checkpointing, recovery, and monitoring
+1. **Type Safety**: Compile-time validation prevents incompatible stage connections with comprehensive error reporting
+2. **Quality Assurance**: Automated output verification with stage-specific quality metrics and diagnostic feedback
+3. **Flexible Configuration**: YAML/JSON-based pipeline definitions support complex workflows with dependency validation
+4. **Performance Optimization**: Multi-stage processing with real-time quality assessment and resource monitoring
+5. **Development Efficiency**: Playground environment with comprehensive verification tools for rapid iteration
+6. **Production Ready**: Enterprise-grade reliability with checkpointing, recovery, monitoring, and quality validation
+7. **Comprehensive Verification**: Multi-level validation from data type checking to audio quality assessment
+8. **Diagnostic Excellence**: Detailed error messages and quality metrics for troubleshooting and optimization
 
-This enhanced architecture provides a robust foundation for production-scale audio processing with configurable workflows, type safety, and comprehensive development tools.
+This enhanced architecture provides a robust foundation for production-scale audio processing with configurable workflows, comprehensive quality assurance, type safety, and advanced diagnostic capabilities. The new verification system ensures high-quality outputs at every stage while providing detailed feedback for optimization and troubleshooting.

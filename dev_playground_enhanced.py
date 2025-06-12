@@ -411,6 +411,7 @@ class EnhancedStagePlayground:
                             
                             # Check if this stage produces the required output
                             for output in stage_instance.metadata.outputs:
+                                # First try exact name match
                                 if output.name == input_name and output.data_type == data_type:
                                     # Load and return the data
                                     with open(data_file, 'rb') as f:
@@ -419,6 +420,20 @@ class EnhancedStagePlayground:
                                     # Extract the specific output if it's a dict
                                     if isinstance(cached_data, dict) and input_name in cached_data:
                                         return cached_data[input_name]
+                                    elif output.name == "audio_with_sr" and isinstance(cached_data, tuple):
+                                        return cached_data
+                                    elif not isinstance(cached_data, dict):
+                                        return cached_data
+                                
+                                # If no exact name match, try data type compatibility
+                                elif output.data_type == data_type:
+                                    # Load and return the data
+                                    with open(data_file, 'rb') as f:
+                                        cached_data = pickle.load(f)
+                                    
+                                    # Extract the output by name
+                                    if isinstance(cached_data, dict) and output.name in cached_data:
+                                        return cached_data[output.name]
                                     elif output.name == "audio_with_sr" and isinstance(cached_data, tuple):
                                         return cached_data
                                     elif not isinstance(cached_data, dict):

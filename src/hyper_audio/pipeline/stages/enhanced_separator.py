@@ -2,7 +2,7 @@
 
 import numpy as np
 import torch
-from typing import Dict, Any
+from typing import Dict, Any, Tuple, List
 
 from ..stage_interface import (
     EnhancedPipelineStage, StageMetadata, StageInput, StageOutput,
@@ -120,6 +120,83 @@ class EnhancedVoiceSeparator(EnhancedPipelineStage):
                 "music": music
             }
         }
+
+    async def verify_stage_specific(self, outputs: Dict[str, Any]) -> Tuple[bool, List[str]]:
+        """Enhanced voice separator specific verification."""
+        messages = []
+        success = True
+        
+        messages.append("🎯 Voice separator specific checks:")
+        
+        if 'vocals' in outputs and 'music' in outputs:
+            vocals = outputs['vocals']
+            music = outputs['music']
+            
+            # Check vocal isolation quality (simple heuristic)
+            vocal_energy = np.mean(vocals ** 2)
+            music_energy = np.mean(music ** 2)
+            
+            messages.append(f"📊 Vocal energy: {vocal_energy:.6f}")
+            messages.append(f"📊 Music energy: {music_energy:.6f}")
+            
+            # Validate energy levels
+            if vocal_energy < 1e-8:
+                messages.append(f"⚠️ Very low vocal energy - possible separation failure")
+                success = False
+            
+            if music_energy < 1e-8:
+                messages.append(f"⚠️ Very low music energy - possible separation failure")
+                success = False
+            
+            # Check for separation artifacts
+            vocal_max = np.max(np.abs(vocals))
+            music_max = np.max(np.abs(music))
+            
+            if vocal_max > 1.0:
+                messages.append(f"⚠️ Vocals may be clipped (max: {vocal_max:.3f})")
+            
+            if music_max > 1.0:
+                messages.append(f"⚠️ Music may be clipped (max: {music_max:.3f})")
+            
+            # Check for reasonable separation (vocals should be different from music)
+            correlation = np.corrcoef(vocals.flatten(), music.flatten())[0, 1]
+            if abs(correlation) > 0.8:
+                messages.append(f"⚠️ High correlation between vocals and music ({correlation:.3f}) - poor separation?")
+            
+            # Check spectral characteristics
+            vocal_spectral_centroid = self._calculate_spectral_centroid(vocals)
+            music_spectral_centroid = self._calculate_spectral_centroid(music)
+            
+            messages.append(f"📊 Vocal spectral centroid: {vocal_spectral_centroid:.1f} Hz")
+            messages.append(f"📊 Music spectral centroid: {music_spectral_centroid:.1f} Hz")
+            
+            # Vocals typically have higher spectral centroid than instrumental music
+            if vocal_spectral_centroid < music_spectral_centroid:
+                messages.append(f"ℹ️ Vocals have lower spectral centroid than music - check separation quality")
+            
+            messages.append(f"✅ Separation quality checks completed")
+        
+        return success, messages
+    
+    def _calculate_spectral_centroid(self, audio: np.ndarray) -> float:
+        """Calculate spectral centroid as a simple measure of brightness."""
+        try:
+            # Simple spectral centroid calculation
+            fft = np.fft.fft(audio[:min(len(audio), 44100)])  # Use first second
+            magnitude = np.abs(fft)
+            freqs = np.fft.fftfreq(len(fft), 1/44100)
+            
+            # Only use positive frequencies
+            positive_freqs = freqs[:len(freqs)//2]
+            positive_magnitude = magnitude[:len(magnitude)//2]
+            
+            if np.sum(positive_magnitude) > 0:
+                centroid = np.sum(positive_freqs * positive_magnitude) / np.sum(positive_magnitude)
+                return centroid
+            else:
+                return 0.0
+        except Exception:
+            return 0.0
 
 
 class SpeechEnhancer(EnhancedPipelineStage):

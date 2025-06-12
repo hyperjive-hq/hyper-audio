@@ -1,9 +1,10 @@
 """Enhanced stage interface with input/output dependency declaration."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 import numpy as np
 
 
@@ -88,6 +89,281 @@ class EnhancedPipelineStage(ABC):
             Dictionary mapping output names to results
         """
         pass
+
+    async def verify_outputs(self, outputs: Dict[str, Any]) -> Tuple[bool, List[str]]:
+        """Verify stage outputs with detailed diagnostics.
+        
+        Args:
+            outputs: Dictionary mapping output names to results
+            
+        Returns:
+            Tuple of (success: bool, messages: List[str])
+        """
+        messages = []
+        success = True
+        
+        try:
+            # Basic structure verification
+            if not isinstance(outputs, dict):
+                messages.append(f"❌ Expected dict output, got {type(outputs)}")
+                return False, messages
+            
+            # Check all expected outputs are present
+            missing_outputs = []
+            for output_def in self.metadata.outputs:
+                if output_def.name not in outputs:
+                    missing_outputs.append(output_def.name)
+            
+            if missing_outputs:
+                messages.append(f"❌ Missing outputs: {missing_outputs}")
+                success = False
+            
+            # Verify each output
+            for output_name, output_data in outputs.items():
+                output_def = next((o for o in self.metadata.outputs if o.name == output_name), None)
+                if output_def:
+                    output_ok, output_messages = self._verify_output_data(output_name, output_data, output_def)
+                    messages.extend(output_messages)
+                    if not output_ok:
+                        success = False
+                else:
+                    messages.append(f"⚠️ Unexpected output: {output_name}")
+            
+            # Stage-specific validations
+            stage_ok, stage_messages = await self.verify_stage_specific(outputs)
+            messages.extend(stage_messages)
+            if not stage_ok:
+                success = False
+            
+            if success:
+                messages.append("✅ All outputs verified successfully")
+            
+            return success, messages
+            
+        except Exception as e:
+            messages.append(f"❌ Verification error: {e}")
+            return False, messages
+
+    def _verify_output_data(self, output_name: str, data: Any, output_def) -> Tuple[bool, List[str]]:
+        """Verify individual output data."""
+        messages = []
+        data_type = output_def.data_type
+        
+        messages.append(f"📋 Checking {output_name} ({data_type.value})")
+        
+        try:
+            # Type-specific verification
+            if data_type == DataType.AUDIO_MONO:
+                return self._verify_audio_mono(data, output_name)
+            elif data_type == DataType.AUDIO_STEREO:
+                return self._verify_audio_stereo(data, output_name)
+            elif data_type == DataType.AUDIO_WITH_SR:
+                return self._verify_audio_with_sr(data, output_name)
+            elif data_type == DataType.SEPARATED_AUDIO:
+                return self._verify_separated_audio(data, output_name)
+            elif data_type == DataType.SAMPLE_RATE:
+                return self._verify_sample_rate(data, output_name)
+            elif data_type == DataType.SPEAKER_SEGMENTS:
+                return self._verify_speaker_segments(data, output_name)
+            elif data_type == DataType.TRANSCRIPTION:
+                return self._verify_transcription(data, output_name)
+            elif data_type == DataType.FILE_PATH:
+                return self._verify_file_path(data, output_name)
+            else:
+                messages.append(f"⚠️ Unknown data type, skipping detailed verification")
+                return True, messages
+                
+        except Exception as e:
+            messages.append(f"❌ Verification failed: {e}")
+            return False, messages
+
+    async def verify_stage_specific(self, outputs: Dict[str, Any]) -> Tuple[bool, List[str]]:
+        """Stage-specific verification logic. Override in subclasses."""
+        return True, []
+
+    def _verify_audio_mono(self, data: Any, name: str) -> Tuple[bool, List[str]]:
+        """Verify mono audio data."""
+        messages = []
+        
+        if not isinstance(data, np.ndarray):
+            messages.append(f"❌ Expected numpy array, got {type(data)}")
+            return False, messages
+        
+        if data.ndim != 1:
+            messages.append(f"❌ Expected 1D array (mono), got {data.ndim}D with shape {data.shape}")
+            return False, messages
+        
+        duration = len(data) / 44100  # Assume 44.1kHz
+        messages.append(f"✅ Mono audio: {len(data):,} samples (~{duration:.1f}s)")
+        
+        # Check for common issues
+        if np.all(data == 0):
+            messages.append(f"⚠️ Audio is completely silent")
+            return False, messages
+        
+        if np.max(np.abs(data)) > 1.1:
+            messages.append(f"⚠️ Audio may be clipped (max amplitude: {np.max(np.abs(data)):.3f})")
+        
+        if np.isnan(data).any():
+            messages.append(f"❌ Audio contains NaN values")
+            return False, messages
+        
+        return True, messages
+
+    def _verify_audio_stereo(self, data: Any, name: str) -> Tuple[bool, List[str]]:
+        """Verify stereo audio data."""
+        messages = []
+        
+        if not isinstance(data, np.ndarray):
+            messages.append(f"❌ Expected numpy array, got {type(data)}")
+            return False, messages
+        
+        if data.ndim != 2 or data.shape[0] != 2:
+            messages.append(f"❌ Expected (2, samples) array, got shape {data.shape}")
+            return False, messages
+        
+        duration = data.shape[1] / 44100
+        messages.append(f"✅ Stereo audio: {data.shape[1]:,} samples (~{duration:.1f}s)")
+        return True, messages
+
+    def _verify_audio_with_sr(self, data: Any, name: str) -> Tuple[bool, List[str]]:
+        """Verify audio with sample rate tuple."""
+        messages = []
+        
+        if not isinstance(data, tuple) or len(data) != 2:
+            messages.append(f"❌ Expected (audio, sample_rate) tuple, got {type(data)}")
+            return False, messages
+        
+        audio, sr = data
+        
+        if not isinstance(audio, np.ndarray):
+            messages.append(f"❌ Expected numpy array for audio, got {type(audio)}")
+            return False, messages
+        
+        if not isinstance(sr, (int, float)) or sr <= 0:
+            messages.append(f"❌ Invalid sample rate: {sr}")
+            return False, messages
+        
+        duration = len(audio) / sr
+        messages.append(f"✅ Audio+SR: {len(audio):,} samples at {sr}Hz (~{duration:.1f}s)")
+        return True, messages
+
+    def _verify_separated_audio(self, data: Any, name: str) -> Tuple[bool, List[str]]:
+        """Verify separated audio dictionary."""
+        messages = []
+        
+        if not isinstance(data, dict):
+            messages.append(f"❌ Expected dict, got {type(data)}")
+            return False, messages
+        
+        expected_keys = {'vocals', 'music'}
+        if not expected_keys.issubset(data.keys()):
+            missing = expected_keys - set(data.keys())
+            messages.append(f"❌ Missing keys: {missing}")
+            return False, messages
+        
+        for key in expected_keys:
+            if not isinstance(data[key], np.ndarray):
+                messages.append(f"❌ {key} should be numpy array, got {type(data[key])}")
+                return False, messages
+        
+        vocals_len = len(data['vocals'])
+        music_len = len(data['music'])
+        
+        messages.append(f"✅ Separated audio: vocals={vocals_len:,}, music={music_len:,} samples")
+        
+        if abs(vocals_len - music_len) > 1000:  # Allow small differences
+            messages.append(f"⚠️ Length mismatch between vocals and music")
+        
+        return True, messages
+
+    def _verify_sample_rate(self, data: Any, name: str) -> Tuple[bool, List[str]]:
+        """Verify sample rate value."""
+        messages = []
+        
+        if not isinstance(data, (int, float)) or data <= 0:
+            messages.append(f"❌ Invalid sample rate: {data}")
+            return False, messages
+        
+        messages.append(f"✅ Sample rate: {data} Hz")
+        
+        if data not in [16000, 22050, 44100, 48000]:
+            messages.append(f"⚠️ Unusual sample rate (common: 16k, 22k, 44.1k, 48k)")
+        
+        return True, messages
+
+    def _verify_speaker_segments(self, data: Any, name: str) -> Tuple[bool, List[str]]:
+        """Verify speaker segments list."""
+        messages = []
+        
+        if not isinstance(data, list):
+            messages.append(f"❌ Expected list, got {type(data)}")
+            return False, messages
+        
+        if len(data) == 0:
+            messages.append(f"⚠️ No speaker segments found")
+            return False, messages
+        
+        messages.append(f"✅ Speaker segments: {len(data)} segments")
+        
+        for i, segment in enumerate(data):
+            if not isinstance(segment, dict):
+                messages.append(f"❌ Segment {i} should be dict, got {type(segment)}")
+                return False, messages
+            
+            required_keys = {'speaker', 'start', 'end'}
+            if not required_keys.issubset(segment.keys()):
+                missing = required_keys - set(segment.keys())
+                messages.append(f"❌ Segment {i} missing keys: {missing}")
+                return False, messages
+        
+        return True, messages
+
+    def _verify_transcription(self, data: Any, name: str) -> Tuple[bool, List[str]]:
+        """Verify transcription dictionary."""
+        messages = []
+        
+        if not isinstance(data, dict):
+            messages.append(f"❌ Expected dict, got {type(data)}")
+            return False, messages
+        
+        required_keys = {'full_text', 'segments'}
+        if not required_keys.issubset(data.keys()):
+            missing = required_keys - set(data.keys())
+            messages.append(f"❌ Missing keys: {missing}")
+            return False, messages
+        
+        full_text = data['full_text']
+        segments = data['segments']
+        
+        if not isinstance(full_text, str):
+            messages.append(f"❌ full_text should be string, got {type(full_text)}")
+            return False, messages
+        
+        if not isinstance(segments, list):
+            messages.append(f"❌ segments should be list, got {type(segments)}")
+            return False, messages
+        
+        word_count = len(full_text.split())
+        messages.append(f"✅ Transcription: {word_count} words, {len(segments)} segments")
+        
+        return True, messages
+
+    def _verify_file_path(self, data: Any, name: str) -> Tuple[bool, List[str]]:
+        """Verify file path."""
+        messages = []
+        
+        if not isinstance(data, str):
+            messages.append(f"❌ Expected string path, got {type(data)}")
+            return False, messages
+        
+        path = Path(data)
+        if not path.exists():
+            messages.append(f"❌ File does not exist: {data}")
+            return False, messages
+        
+        messages.append(f"✅ File path: {data} (exists)")
+        return True, messages
 
     async def validate_inputs(self, inputs: Dict[str, Any]) -> bool:
         """Validate that provided inputs match requirements.
