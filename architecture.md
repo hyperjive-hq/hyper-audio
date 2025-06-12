@@ -2,31 +2,66 @@
 
 ## Overview
 
-The Hyper-Audio project implements a **resilient audio processing pipeline** designed for voice replacement in audio files. The system uses a modular, stage-based architecture with comprehensive checkpointing, failure recovery, and performance monitoring capabilities.
+The Hyper-Audio project implements a **resilient and configurable audio processing pipeline** designed for voice replacement in audio files. The system features a modular, stage-based architecture with comprehensive checkpointing, failure recovery, performance monitoring, and a powerful configuration management system that supports complex multi-stage audio processing workflows.
 
 ## High-Level Architecture
 
 ```mermaid
 graph TB
-    A[Input Audio File] --> B[ResilientAudioPipeline]
-    B --> C[Stage Execution Engine]
-    C --> D[Output Audio File]
+    A[Input Audio File] --> B[ConfigManager]
+    B --> C[Pipeline Configuration]
+    C --> D[ResilientAudioPipeline]
+    D --> E[Stage Execution Engine]
+    E --> F[Output Audio File]
     
-    C --> E[Checkpoint Manager]
-    C --> F[State Manager]
-    C --> G[Analytics Engine]
+    B --> G[Dependency Validation]
+    B --> H[Type Safety Checking]
     
-    E --> H[(Checkpoint Storage)]
-    F --> I[(Pipeline State)]
-    G --> J[(Performance Metrics)]
+    E --> I[Checkpoint Manager]
+    E --> J[State Manager]
+    E --> K[Analytics Engine]
     
-    K[Error Handler] --> L[Failure Reports]
-    C --> K
+    I --> L[(Checkpoint Storage)]
+    J --> M[(Pipeline State)]
+    K --> N[(Performance Metrics)]
+    
+    O[Error Handler] --> P[Failure Reports]
+    E --> O
+    
+    Q[Stage Registry] --> B
+    R[YAML/JSON Config] --> B
 ```
 
-## Pipeline Flow
+## Enhanced Pipeline Architecture
 
-The audio processing pipeline consists of 6 sequential stages, each with its own purpose and data transformations:
+### Configurable Pipeline Flow
+
+The enhanced pipeline supports flexible, configurable workflows beyond the traditional linear sequence. It allows for complex processing chains with multiple branches and specialized stages:
+
+```mermaid
+flowchart TD
+    A[Input Audio] --> B[AudioPreprocessor]
+    B --> C[VoiceSeparator]
+    C --> D[SpeechEnhancer]
+    C --> E[SpeakerDiarizer]
+    D --> F[SpeechRecognizer]
+    E --> F
+    F --> G[VoiceSynthesizer]
+    G --> H[AudioReconstructor]
+    H --> I[Output Audio]
+    
+    B -.-> CP1[(Checkpoint)]
+    C -.-> CP2[(Checkpoint)]
+    D -.-> CP3[(Checkpoint)]
+    E -.-> CP4[(Checkpoint)]
+    F -.-> CP5[(Checkpoint)]
+    G -.-> CP6[(Checkpoint)]
+    H -.-> CP7[(Checkpoint)]
+```
+
+### Traditional Linear Pipeline (Original)
+
+For comparison, the original linear pipeline flow:
 
 ```mermaid
 flowchart LR
@@ -46,6 +81,107 @@ flowchart LR
     G -.-> CP6[(Checkpoint)]
 ```
 
+## Enhanced Stage Interface System
+
+### Type-Safe Stage Architecture
+
+The enhanced pipeline introduces a sophisticated stage interface system with compile-time type safety and automatic compatibility checking:
+
+```mermaid
+classDiagram
+    class EnhancedPipelineStage {
+        <<abstract>>
+        +stage_id: str
+        +config: Dict
+        +_metadata: StageMetadata
+        +get_metadata() StageMetadata
+        +process(inputs) Dict
+        +validate_inputs(inputs) bool
+        +can_connect_to(other_stage) Dict
+    }
+    
+    class StageMetadata {
+        +name: str
+        +description: str
+        +category: str
+        +model_name: str
+        +inputs: List[StageInput]
+        +outputs: List[StageOutput]
+        +performance_notes: str
+    }
+    
+    class StageInput {
+        +name: str
+        +data_type: DataType
+        +required: bool
+        +description: str
+    }
+    
+    class StageOutput {
+        +name: str
+        +data_type: DataType
+        +description: str
+    }
+    
+    class DataType {
+        <<enumeration>>
+        AUDIO_MONO
+        AUDIO_STEREO
+        AUDIO_WITH_SR
+        SEPARATED_AUDIO
+        SPEAKER_SEGMENTS
+        TRANSCRIPTION
+        SYNTHESIZED_AUDIO
+    }
+    
+    EnhancedPipelineStage --> StageMetadata
+    StageMetadata --> StageInput
+    StageMetadata --> StageOutput
+    StageInput --> DataType
+    StageOutput --> DataType
+```
+
+### Configuration Management System
+
+```mermaid
+classDiagram
+    class ConfigManager {
+        +registered_stages: Dict
+        +register_stage(stage_class, name)
+        +load_config(path) PipelineConfig
+        +save_config(config, path)
+        +validate_config(config) Tuple[bool, List[str]]
+        +get_execution_order(config) List[str]
+        +create_example_config() PipelineConfig
+    }
+    
+    class PipelineConfig {
+        +name: str
+        +description: str
+        +global_config: Dict
+        +stages: List[StageConfig]
+        +connections: List[StageConnection]
+    }
+    
+    class StageConfig {
+        +stage_class: str
+        +stage_id: str
+        +enabled: bool
+        +config: Dict
+    }
+    
+    class StageConnection {
+        +from_stage: str
+        +from_output: str
+        +to_stage: str
+        +to_input: str
+    }
+    
+    ConfigManager --> PipelineConfig
+    PipelineConfig --> StageConfig
+    PipelineConfig --> StageConnection
+```
+
 ## Stage Specifications
 
 ### 1. Audio Preprocessor
@@ -58,53 +194,83 @@ flowchart LR
   - Volume normalization
   - Sample rate conversion
 
-### 2. Voice Separator
-**Purpose**: Voice/music separation using source separation models
-- **Input**: Normalized audio + sample rate
-- **Output**: Separated audio tracks (vocals, background music)
-- **Model**: HTDemucs (implemented in `remove_music.py`)
+### 2. Enhanced Voice Separator
+**Purpose**: Voice/music separation using advanced source separation models
+- **Input**: Normalized audio + sample rate (DataType.AUDIO_WITH_SR)
+- **Output**: Multiple separation outputs
+  - `vocals`: Separated vocal audio (DataType.AUDIO_MONO)
+  - `music`: Separated music/instrumental audio (DataType.AUDIO_MONO)
+  - `separated_audio`: Dictionary with vocals and music keys (DataType.SEPARATED_AUDIO)
+- **Model**: HTDemucs Fine-tuned (`htdemucs_ft`) - improved quality over standard HTDemucs
 - **Functionality**:
-  - Isolate vocal tracks from background music
-  - Preserve audio quality during separation
+  - High-quality vocal isolation from background music
+  - Support for both mono and stereo audio
+  - Automatic format conversion and validation
+  - GPU-accelerated processing with CUDA support
 
-### 3. Speaker Diarizer
+### 3. Speech Enhancer (New)
+**Purpose**: Noise reduction and speech quality enhancement
+- **Input**: Audio with sample rate or separated audio (DataType.AUDIO_WITH_SR)
+- **Output**: 
+  - `enhanced_audio`: Noise-reduced audio (DataType.AUDIO_MONO)
+  - `noise_estimate`: Estimated noise component (DataType.AUDIO_MONO)
+- **Model**: SpeechBrain SepFormer (`speechbrain/sepformer-whamr`)
+- **Functionality**:
+  - Advanced noise reduction for speech clarity
+  - Handles mixed content (music + noise + speech)
+  - Configurable enhancement levels (moderate, aggressive)
+  - Works as post-processing after music separation
+
+### 4. Speaker Diarizer
 **Purpose**: Speaker identification and segmentation
-- **Input**: Vocal tracks + sample rate
-- **Output**: Speaker segments with timestamps and IDs
+- **Input**: Enhanced vocal tracks + sample rate (DataType.AUDIO_WITH_SR)
+- **Output**: Speaker segments with timestamps and IDs (DataType.SPEAKER_SEGMENTS)
 - **Model**: Pyannote speaker-diarization (implemented in `transcribe.py`)
 - **Functionality**:
   - Identify different speakers in audio
   - Generate time-based speaker segments
   - Assign unique speaker IDs
+  - Configurable min/max speaker counts
 
-### 4. Speech Recognizer
+### 5. Speech Recognizer
 **Purpose**: Speech-to-text transcription with speaker attribution
-- **Input**: Vocal tracks + sample rate + speaker segments
-- **Output**: Transcription with speaker-specific text
+- **Input**: 
+  - Enhanced vocal tracks (DataType.AUDIO_WITH_SR)
+  - Speaker segments (DataType.SPEAKER_SEGMENTS)
+- **Output**: Transcription with speaker-specific text (DataType.TRANSCRIPTION)
 - **Model**: Whisper large-v2 (implemented in `transcribe.py`)
 - **Functionality**:
-  - Convert speech to text
-  - Maintain speaker attribution
-  - Handle multiple languages
+  - Convert speech to text with precise timing
+  - Maintain speaker attribution from diarization
+  - Support automatic language detection
+  - High-accuracy transcription with confidence scores
 
-### 5. Voice Synthesizer
+### 6. Voice Synthesizer
 **Purpose**: Voice synthesis and replacement
-- **Input**: Transcription + target speaker + replacement voice
-- **Output**: Synthesized audio for target speaker
+- **Input**: 
+  - Transcription data (DataType.TRANSCRIPTION)
+  - Target speaker configuration
+  - Replacement voice reference
+- **Output**: Synthesized audio for target speaker (DataType.SYNTHESIZED_AUDIO)
 - **Model**: MetaVoice-1B (implemented in `tts.py`)
 - **Functionality**:
-  - Generate speech from text
-  - Apply voice cloning/style transfer
-  - Maintain natural prosody
+  - Generate speech from text with voice cloning
+  - Apply voice style transfer to match reference
+  - Preserve natural prosody and timing
+  - Support for multiple voice targets
 
-### 6. Audio Reconstructor
+### 7. Audio Reconstructor
 **Purpose**: Final audio reconstruction and mixing
-- **Input**: Original audio + separated tracks + synthesized audio + speaker segments
+- **Input**: 
+  - Original separated audio tracks
+  - Synthesized replacement audio
+  - Speaker segments and timing data
 - **Output**: Final reconstructed audio with voice replacement
 - **Functionality**:
-  - Replace target speaker audio
-  - Mix synthesized speech with background
-  - Maintain timing and synchronization
+  - Seamlessly replace target speaker segments
+  - Mix synthesized speech with background music
+  - Maintain precise timing and synchronization
+  - Apply audio mastering and quality enhancement
 
 ## Data Models
 
@@ -263,77 +429,240 @@ graph TB
 - **Job Management**: Multiple concurrent pipeline jobs
 - **Analytics**: Comprehensive performance monitoring
 
+## Configuration System
+
+### Multi-Stage Pipeline Configuration
+
+The enhanced pipeline supports complex configurations through YAML/JSON files. Example multi-stage speech enhancement configuration:
+
+```yaml
+name: "Multi-Stage Speech Enhancement"
+description: "Combines music separation and speech enhancement for optimal results"
+
+global_config:
+  device: "cuda"
+  cache_dir: "~/.cache/hyper_audio"
+  max_workers: 4
+
+stages:
+  - stage_class: "AudioPreprocessor"
+    stage_id: "preprocessor"
+    enabled: true
+    config:
+      target_sample_rate: 44100
+      normalize: true
+      
+  - stage_class: "VoiceSeparator"
+    stage_id: "music_separator"
+    enabled: true
+    config:
+      model_name: "htdemucs_ft"
+      overlap: 0.75
+      
+  - stage_class: "SpeechEnhancer"
+    stage_id: "noise_reducer"
+    enabled: true
+    config:
+      model_name: "speechbrain/sepformer-whamr"
+      enhancement_level: "aggressive"
+
+connections:
+  - from_stage: "preprocessor"
+    from_output: "audio_with_sr"
+    to_stage: "music_separator"
+    to_input: "audio_input"
+    
+  - from_stage: "music_separator"
+    from_output: "vocals"
+    to_stage: "noise_reducer"
+    to_input: "audio_input"
+```
+
+### Key Configuration Features
+
+1. **Dependency Validation**: Automatic checking of stage input/output compatibility
+2. **Execution Ordering**: Topological sort for optimal stage execution sequence
+3. **Type Safety**: Compile-time validation of data type connections
+4. **Flexible Branching**: Support for parallel processing paths
+5. **Dynamic Stage Registry**: Runtime registration of available stages
+
 ## Current Implementation Status
 
 ### ✅ Implemented Components
 - **Pipeline Infrastructure**: Complete core pipeline with retry logic
 - **Checkpoint System**: Full checkpointing and state management
 - **Analytics Engine**: Comprehensive monitoring and reporting
-- **Configuration**: Flexible pipeline configuration system
+- **Enhanced Configuration**: Type-safe pipeline configuration with dependency validation
+- **Stage Interface System**: Strongly-typed stage inputs/outputs with compatibility checking
+- **Multi-Stage Processing**: Support for complex processing chains (music separation + speech enhancement)
+- **Development Playground**: Complete development environment for individual stage testing
+
+### ✅ Enhanced Stage Implementations
+- **Enhanced Voice Separator**: HTDemucs integration with type safety and GPU optimization
+- **Speech Enhancer**: SpeechBrain SepFormer integration for noise reduction
+- **Configuration Manager**: Complete system for pipeline configuration and validation
+- **Model Loading Utilities**: Reusable model loading with progress feedback
 
 ### ⚠️ Partially Implemented
-- **Stage Definitions**: Stage interfaces defined but implementations missing
-- **Standalone Scripts**: Individual processing scripts exist but not integrated
+- **Stage Integration**: Some stage interfaces defined but full implementations pending
+- **Standalone Scripts**: Individual processing scripts exist but need enhanced pipeline integration
   - `transcribe.py`: Diarization + Recognition functionality
-  - `remove_music.py`: Voice separation using HTDemucs
   - `tts.py`: Voice synthesis using MetaVoice-1B
 
-### ❌ Missing Components
-- **Stage Implementations**: All 6 pipeline stages need implementation
-- **Base Stage Class**: `BasePipelineStage` interface
-- **Integration Layer**: Connection between standalone scripts and pipeline
-- **Data Serialization**: Stage-specific data formats
+### 🔄 Integration Opportunities
+- **Speaker Diarizer**: Integrate `transcribe.py` diarization → Enhanced SpeakerDiarizer
+- **Speech Recognizer**: Integrate `transcribe.py` transcription → Enhanced SpeechRecognizer
+- **Voice Synthesizer**: Integrate `tts.py` → Enhanced VoiceSynthesizer
+- **Audio Reconstructor**: Implement final stage with enhanced interface
 
 ## File Structure
 
 ```
 src/hyper_audio/pipeline/
-├── __init__.py              # Main exports
-├── core.py                  # ResilientAudioPipeline (main orchestrator)
-├── models.py                # Data models (PipelineState, StageMetrics, etc.)
-├── constants.py             # Configuration constants and enums
-├── checkpoint.py            # CheckpointManager and StateManager
-├── core_helpers.py          # Utility functions for pipeline operations
-├── analytics.py             # Full analytics with visualizations
-├── analytics_simple.py      # Simplified analytics for monitoring
+├── __init__.py                    # Main exports
+├── core.py                        # ResilientAudioPipeline (main orchestrator)
+├── models.py                      # Data models (PipelineState, StageMetrics, etc.)
+├── constants.py                   # Configuration constants and enums
+├── checkpoint.py                  # CheckpointManager and StateManager
+├── core_helpers.py                # Utility functions for pipeline operations
+├── analytics.py                   # Full analytics with visualizations
+├── analytics_simple.py            # Simplified analytics for monitoring
+├── stage_interface.py             # Enhanced stage interface and type system
+├── config_manager.py              # Configuration management and validation
 └── stages/
-    └── __init__.py          # Stage exports (implementations missing)
+    ├── __init__.py                # Stage exports
+    ├── base.py                    # Base stage interfaces
+    ├── preprocessor.py            # Audio preprocessing stage
+    ├── enhanced_separator.py      # Enhanced voice separator + speech enhancer
+    ├── diarizer.py                # Speaker diarization stage  
+    ├── recognizer.py              # Speech recognition stage
+    ├── synthesizer.py             # Voice synthesis stage
+    └── reconstructor.py           # Audio reconstruction stage
+
+utils/
+├── model_loader.py                # Reusable model loading utilities
+├── audio_utils.py                 # Audio processing utilities
+└── logging_utils.py               # Logging configuration
+
+examples/
+├── multi_stage_config.yaml        # Example multi-stage configuration
+└── test_enhanced_pipeline.py      # Configuration system demonstration
+
+dev_playground.py                  # Development environment for stage testing
 ```
 
-## Integration Opportunities
+## Enhanced Usage Examples
 
-The existing standalone scripts provide the foundation for pipeline stage implementations:
-
-1. **Audio Preprocessing**: Needs implementation
-2. **Voice Separation**: Integrate `remove_music.py` → VoiceSeparator
-3. **Speaker Diarization**: Integrate `transcribe.py` diarization → SpeakerDiarizer  
-4. **Speech Recognition**: Integrate `transcribe.py` transcription → SpeechRecognizer
-5. **Voice Synthesis**: Integrate `tts.py` → VoiceSynthesizer
-6. **Audio Reconstruction**: Needs implementation
-
-## Usage Example
+### Basic Configuration-Based Usage
 
 ```python
+from hyper_audio.pipeline.config_manager import ConfigManager
 from hyper_audio.pipeline import ResilientAudioPipeline
 
-# Initialize pipeline
-pipeline = ResilientAudioPipeline(
-    checkpoint_dir="./checkpoints",
-    max_retries=3
-)
+# Initialize configuration manager
+config_manager = ConfigManager()
 
-# Process audio with voice replacement
-result = await pipeline.process_audio(
-    input_path="input.wav",
-    output_path="output.wav",
-    target_speaker="SPEAKER_01",
-    replacement_voice="reference_voice.wav",
-    resume_from_checkpoint=True
-)
+# Register available stages
+config_manager.register_stage(AudioPreprocessor, "AudioPreprocessor")
+config_manager.register_stage(EnhancedVoiceSeparator, "VoiceSeparator") 
+config_manager.register_stage(SpeechEnhancer, "SpeechEnhancer")
 
-# Monitor progress
-status = pipeline.get_job_status(result.job_id)
-print(f"Progress: {status['progress_percentage']}%")
+# Load and validate configuration
+pipeline_config = config_manager.load_config("multi_stage_config.yaml")
+is_valid, errors = config_manager.validate_config(pipeline_config)
+
+if is_valid:
+    # Get optimal execution order
+    execution_order = config_manager.get_execution_order(pipeline_config)
+    print(f"Execution order: {' → '.join(execution_order)}")
+    
+    # Initialize and run pipeline
+    pipeline = ResilientAudioPipeline(
+        config=pipeline_config,
+        checkpoint_dir="./checkpoints",
+        max_retries=3
+    )
+    
+    result = await pipeline.process_audio_with_config(
+        input_path="podcast.wav",
+        output_path="enhanced_podcast.wav"
+    )
 ```
 
-This architecture provides a robust foundation for production-scale audio processing with enterprise-grade reliability, monitoring, and scalability features.
+### Multi-Stage Speech Enhancement
+
+```python
+# Example: Process audio through music separation + speech enhancement
+config = {
+    "stages": [
+        {
+            "stage_class": "AudioPreprocessor",
+            "stage_id": "preprocessor",
+            "config": {"target_sample_rate": 44100}
+        },
+        {
+            "stage_class": "VoiceSeparator", 
+            "stage_id": "music_separator",
+            "config": {"model_name": "htdemucs_ft"}
+        },
+        {
+            "stage_class": "SpeechEnhancer",
+            "stage_id": "noise_reducer", 
+            "config": {"enhancement_level": "aggressive"}
+        }
+    ],
+    "connections": [
+        {"from_stage": "preprocessor", "from_output": "audio_with_sr", 
+         "to_stage": "music_separator", "to_input": "audio_input"},
+        {"from_stage": "music_separator", "from_output": "vocals",
+         "to_stage": "noise_reducer", "to_input": "audio_input"}
+    ]
+}
+
+pipeline = ResilientAudioPipeline(config=config)
+result = await pipeline.process_audio("input.wav", "output.wav")
+```
+
+### Stage Compatibility Checking
+
+```python
+# Verify stage compatibility before configuration
+voice_separator = EnhancedVoiceSeparator("separator")
+speech_enhancer = SpeechEnhancer("enhancer")
+
+connections = voice_separator.can_connect_to(speech_enhancer)
+if connections:
+    print("Compatible connections:")
+    for output, compatible_inputs in connections.items():
+        print(f"  {output} → {compatible_inputs}")
+```
+
+### Development and Testing
+
+```python
+# Use development playground for individual stage testing
+from dev_playground import DevPlayground
+
+playground = DevPlayground()
+
+# Test voice separation independently
+result = playground.run_stage(
+    stage="separator",
+    input_data="preprocessor_12345678.pkl",
+    profile=True
+)
+
+# Inspect results
+playground.inspect_result("separator_12345678.pkl")
+```
+
+## Key Architectural Benefits
+
+1. **Type Safety**: Compile-time validation prevents incompatible stage connections
+2. **Flexible Configuration**: YAML/JSON-based pipeline definitions support complex workflows
+3. **Dependency Validation**: Automatic detection of missing connections and circular dependencies
+4. **Performance Optimization**: Multi-stage processing allows for specialized model optimization
+5. **Development Efficiency**: Playground environment enables rapid iteration on individual stages
+6. **Production Ready**: Enterprise-grade reliability with checkpointing, recovery, and monitoring
+
+This enhanced architecture provides a robust foundation for production-scale audio processing with configurable workflows, type safety, and comprehensive development tools.

@@ -44,7 +44,7 @@ class JobStatus(Enum):
 # Stage definitions - centralized configuration
 PIPELINE_STAGES = [
     {"name": "preprocessor", "class": "AudioPreprocessor", "description": "Audio preprocessing and normalization"},
-    {"name": "separator", "class": "VoiceSeparator", "description": "Voice/music separation"}, 
+    {"name": "separator", "class": "VoiceSeparator", "description": "Voice/music separation"},
     {"name": "diarizer", "class": "SpeakerDiarizer", "description": "Speaker identification"},
     {"name": "recognizer", "class": "SpeechRecognizer", "description": "Speech transcription"},
     {"name": "synthesizer", "class": "VoiceSynthesizer", "description": "Voice synthesis"},

@@ -12,7 +12,7 @@ logger = get_logger("audio_utils")
 
 
 def load_audio(
-    file_path: Union[str, Path], 
+    file_path: Union[str, Path],
     sample_rate: Optional[int] = None,
     mono: bool = True,
     normalize: bool = True
@@ -31,25 +31,25 @@ def load_audio(
     file_path = Path(file_path)
     if not file_path.exists():
         raise FileNotFoundError(f"Audio file not found: {file_path}")
-    
+
     logger.info(f"Loading audio: {file_path}")
-    
+
     try:
         audio, sr = librosa.load(
-            str(file_path), 
-            sr=sample_rate, 
+            str(file_path),
+            sr=sample_rate,
             mono=mono,
             dtype=np.float32
         )
-        
+
         if normalize:
             audio = librosa.util.normalize(audio)
-        
+
         duration = len(audio) / sr
         logger.info(f"Loaded audio: {duration:.2f}s at {sr}Hz, {'mono' if mono else 'stereo'}")
-        
+
         return audio, sr
-        
+
     except Exception as e:
         logger.error(f"Failed to load audio file {file_path}: {e}")
         raise
@@ -71,9 +71,9 @@ def save_audio(
     """
     file_path = Path(file_path)
     file_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     logger.info(f"Saving audio to: {file_path}")
-    
+
     try:
         # Ensure audio is in correct shape for soundfile
         if audio.ndim == 1:
@@ -84,10 +84,10 @@ def save_audio(
             audio_to_save = audio.T
         else:
             raise ValueError(f"Unsupported audio shape: {audio.shape}")
-        
+
         sf.write(str(file_path), audio_to_save, sample_rate, format=format)
         logger.info(f"Audio saved successfully: {len(audio)/sample_rate:.2f}s")
-        
+
     except Exception as e:
         logger.error(f"Failed to save audio to {file_path}: {e}")
         raise
@@ -110,9 +110,9 @@ def resample_audio(
     """
     if orig_sr == target_sr:
         return audio
-    
+
     logger.info(f"Resampling audio from {orig_sr}Hz to {target_sr}Hz")
-    
+
     try:
         resampled = librosa.resample(audio, orig_sr=orig_sr, target_sr=target_sr)
         return resampled
@@ -173,7 +173,7 @@ def normalize_audio(audio: np.ndarray, norm: float = 1.0) -> np.ndarray:
     """
     if audio.size == 0:
         return audio
-    
+
     max_val = np.max(np.abs(audio))
     if max_val > 0:
         return audio / max_val * norm
@@ -197,19 +197,19 @@ def apply_fade(
         Audio with fades applied
     """
     audio_faded = audio.copy()
-    
+
     if fade_in_samples > 0:
         fade_in = np.linspace(0, 1, fade_in_samples)
         if audio.ndim == 1:
             audio_faded[:fade_in_samples] *= fade_in
         else:
             audio_faded[:, :fade_in_samples] *= fade_in
-    
+
     if fade_out_samples > 0:
         fade_out = np.linspace(1, 0, fade_out_samples)
         if audio.ndim == 1:
             audio_faded[-fade_out_samples:] *= fade_out
         else:
             audio_faded[:, -fade_out_samples:] *= fade_out
-    
+
     return audio_faded
