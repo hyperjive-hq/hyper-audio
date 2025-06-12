@@ -505,3 +505,40 @@ This is an experimental project exploring the boundaries of local AI audio proce
 ## 📄 License
 
 MIT License - See LICENSE file for details
+
+
+
+  1. Asteroid Models (SpeechBrain ecosystem)
+
+  "speechbrain/sepformer-wham"           # Speech + noise + reverb
+  "speechbrain/sepformer-whamr"          # + room acoustics
+  "speechbrain/sepformer-wsj02mix"       # Multi-speaker + noise
+  "speechbrain/dualpath-rnn-wsj0-2mix"   # Classic multi-source
+
+  2. ONNX Speech Enhancement Models
+
+  "microsoft/speechtokenizer-base"        # Microsoft's multi-domain
+  "nvidia/speechtokenizer"               # NVIDIA's approach
+
+  3. Universal Source Separation
+
+  "asteroid/ConvTasNet_WHAM"             # 3-source: speech + 2 noise types
+  "asteroid/DPRNNTasNet_WHAMR"           # + reverberation handling
+  "facebook/bandit-v1_0"                 # Facebook's universal separator
+
+  4. Research Models (Cutting Edge)
+
+  "speechbrain/resepformer-wsj02mix"     # Recent state-of-the-art
+  "kaituoxu/Conv-TasNet"                 # Lightweight option
+  "asteroid/DPRNN_TAC"                   # Time-domain separation
+
+  5. Commercial-Grade Options
+
+  "crisp/speech-enhancement"             # Multi-modal enhancement
+  "elevenlabs/speech-isolator"           # If available
+
+  🏆 Top Recommendations
+
+  1. speechbrain/sepformer-whamr - Best all-around for speech + music + noise + reverb
+  2. asteroid/DPRNNTasNet_WHAMR - Good performance/speed balance
+  3. facebook/bandit-v1_0 - If you can access it (universal separator)
