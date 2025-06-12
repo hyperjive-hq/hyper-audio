@@ -23,7 +23,8 @@ from hyper_audio.pipeline.config_manager import ConfigManager
 from hyper_audio.pipeline.stages import (
     AudioPreprocessor, VoiceSeparator, SpeakerDiarizer,
     SpeechRecognizer, VoiceSynthesizer, AudioReconstructor,
-    SepformerSeparator, EnhancedVoiceSeparator, SpeechEnhancer
+    SepformerSeparator, EnhancedVoiceSeparator, SpeechEnhancer,
+    AudioPostProcessor
 )
 from hyper_audio.config.settings import settings
 from hyper_audio.utils.logging_utils import get_logger
@@ -67,6 +68,7 @@ class ConfigPipelineRunner:
             "VoiceSeparator": VoiceSeparator,
             "EnhancedVoiceSeparator": EnhancedVoiceSeparator,
             "SpeechEnhancer": SpeechEnhancer,
+            "AudioPostProcessor": AudioPostProcessor,
             "SpeakerDiarizer": SpeakerDiarizer,
             "SpeechRecognizer": SpeechRecognizer,
             "VoiceSynthesizer": VoiceSynthesizer,
@@ -150,6 +152,16 @@ class ConfigPipelineRunner:
             # Resolve inputs
             stage_inputs = await self._resolve_stage_inputs(stage_config, depends_on)
             
+            # Debug logging
+            logger.debug(f"Stage {stage_name} resolved inputs: {list(stage_inputs.keys())}")
+            for key, value in stage_inputs.items():
+                if hasattr(value, 'shape'):
+                    logger.debug(f"  {key}: numpy array shape {value.shape}")
+                elif isinstance(value, dict):
+                    logger.debug(f"  {key}: dict with keys {list(value.keys())}")
+                else:
+                    logger.debug(f"  {key}: {type(value)}")
+            
             # Get stage configuration
             stage_config_dict = stage_config.get("config", {})
             
@@ -208,11 +220,26 @@ class ConfigPipelineRunner:
     async def _map_dependency_outputs(self, stage_instance: EnhancedPipelineStage, 
                                     dep_result: Dict[str, Any], inputs: Dict[str, Any]):
         """Map dependency outputs to stage inputs based on type compatibility."""
-        required_inputs = stage_instance.metadata.inputs
+        stage_inputs = stage_instance.metadata.inputs
+        required_inputs = [inp for inp in stage_inputs if inp.required]
         
+        # If there are required inputs, map them specifically
         for input_def in required_inputs:
-            if input_def.name not in inputs and input_def.required:
+            if input_def.name not in inputs:
                 # Try to find compatible data in dependency result
+                if input_def.name in dep_result:
+                    inputs[input_def.name] = dep_result[input_def.name]
+                else:
+                    # Look for compatible data types
+                    for key, value in dep_result.items():
+                        if self._is_compatible_data(value, input_def.data_type):
+                            inputs[input_def.name] = value
+                            break
+        
+        # If no required inputs, or for optional inputs, pass through compatible data
+        for input_def in stage_inputs:
+            if input_def.name not in inputs:
+                # Try direct mapping first
                 if input_def.name in dep_result:
                     inputs[input_def.name] = dep_result[input_def.name]
                 else:

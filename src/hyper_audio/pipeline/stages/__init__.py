@@ -9,6 +9,7 @@ from .synthesizer import VoiceSynthesizer
 from .reconstructor import AudioReconstructor
 from .sepformer_separator import SepformerSeparator
 from .enhanced_separator import EnhancedVoiceSeparator, SpeechEnhancer
+from .audio_post_processor import AudioPostProcessor
 
 __all__ = [
     "BasePipelineStage",
@@ -20,5 +21,6 @@ __all__ = [
     "AudioReconstructor",
     "SepformerSeparator",
     "EnhancedVoiceSeparator",
-    "SpeechEnhancer"
+    "SpeechEnhancer",
+    "AudioPostProcessor"
 ]

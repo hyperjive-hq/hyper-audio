@@ -9,9 +9,9 @@ defaults:
 
 # Predefined pipeline configurations
 pipelines:
-  # DMX Voice Separation Pipeline
+  # DMX Voice Separation Pipeline with Post-Processing
   dmx_separation:
-    description: "Process DMX FLAC file with enhanced voice separation"
+    description: "Process DMX FLAC file with enhanced voice separation and cleanup"
     stages:
       - stage: AudioPreprocessor
         config:
@@ -23,7 +23,41 @@ pipelines:
       - stage: EnhancedVoiceSeparator
         config:
           model_name: "htdemucs_ft"
+          quality_mode: "high"
+          overlap: 0.75
+          shifts: 3
         depends_on: AudioPreprocessor
+      
+      - stage: AudioPostProcessor
+        config:
+          input_sources: ["vocals"]
+          preset: "vocal"
+          output_suffix: "_clean"
+          # Vocal-specific tuning
+          high_pass_cutoff: 85          # Remove low-end muddiness from vocals
+          noise_gate_threshold: -55     # Moderate gating for speech pauses
+          spectral_enhancement: true    # Enhance vocal presence and clarity
+          preemphasis_coeff: 0.95      # Boost high frequencies for speech intelligibility
+          dynamic_compression: true    # Even out vocal dynamics
+          compression_threshold: -18   # Start compression early for consistency
+          compression_ratio: 3.5       # Good ratio for speech consistency
+          limiter_threshold: -0.3      # Prevent harsh vocal peaks
+        depends_on: EnhancedVoiceSeparator
+      
+      - stage: AudioPostProcessor
+        config:
+          input_sources: ["music"]
+          preset: "music"
+          output_suffix: "_clean"
+          # Music-specific tuning
+          high_pass_cutoff: 30          # Preserve musical low-end (bass, kick)
+          noise_gate_threshold: -65     # Gentle gating to preserve musical decay
+          spectral_enhancement: false  # Preserve natural musical timbre
+          dynamic_compression: true    # Light compression to glue the mix
+          compression_threshold: -22   # Higher threshold to preserve dynamics
+          compression_ratio: 2.5       # Musical ratio that preserves dynamics
+          limiter_threshold: -0.5      # Prevent clipping while preserving peaks
+        depends_on: EnhancedVoiceSeparator
 
   # Host Sample Processing Pipeline  
   host_processing:
@@ -75,8 +109,7 @@ pipelines:
         config:
           model_name: "speechbrain/sepformer-whamr"
         depends_on: AudioPreprocessor
-
-  # Quick Test Pipeline
+  # Quick Test Pipeline with Post-Processing
   quick_test:
     description: "Quick test with short audio for rapid iteration"
     stages:
@@ -86,9 +119,18 @@ pipelines:
           normalize: true
         inputs:
           file_path: "data/test_audio.wav"
-      
-      - stage: VoiceSeparator
+      - stage: EnhancedVoiceSeparator
+        config:
+          model_name: "htdemucs_ft"
+          quality_mode: "balanced"
         depends_on: AudioPreprocessor
+      
+      - stage: AudioPostProcessor
+        config:
+          input_sources: ["auto"]  # Process all available sources
+          preset: "enhance"         # Balanced enhancement
+          output_suffix: "_enhanced"
+        depends_on: EnhancedVoiceSeparator
 
 # Individual stage configurations for standalone testing
 stages:
@@ -132,6 +174,34 @@ stages:
       - "small"
       - "medium"
       - "large"
+
+  AudioPostProcessor:
+    default_config:
+      preset: "enhance"
+      input_sources: ["auto"]
+      output_suffix: "_enhanced"
+    preset_options:
+      - "clean"      # Light processing for good quality audio
+      - "enhance"    # Balanced processing [DEFAULT]
+      - "aggressive" # Heavy processing for problem audio
+      - "vocal"      # Optimized for speech/vocals
+      - "music"      # Preserve musical character
+    tuning_examples:
+      vocal_cleanup:
+        preset: "vocal"
+        high_pass_cutoff: 85
+        noise_gate_threshold: -55
+        spectral_enhancement: true
+        preemphasis_coeff: 0.95
+        compression_ratio: 3.5
+        limiter_threshold: -0.3
+      music_cleanup:
+        preset: "music"
+        high_pass_cutoff: 30
+        noise_gate_threshold: -65
+        spectral_enhancement: false
+        compression_ratio: 2.5
+        limiter_threshold: -0.5
 
 # Testing scenarios
 test_scenarios:
